@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>UpBek</title>
+  <meta name="description" content="UpBek — калории, финансы и прокачка героя">
+  <meta name="theme-color" content="#0d1020">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="UpBek">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,500;0,700;0,900;1,900&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="theme.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('upbek.theme')||'classic'}catch(e){document.documentElement.dataset.theme='classic'}</script>
+</head>
+<body>
+  <main id="view"></main>
+
+  <nav class="tabbar hidden">
+    <button class="tab on" data-a="tab" data-v="hero"><span class="ic">⚔️</span>Герой</button>
+    <button class="tab" data-a="tab" data-v="body"><span class="ic">🍗</span>Тело</button>
+    <button class="fab" data-a="hub" aria-label="Записать">＋</button>
+    <button class="tab" data-a="tab" data-v="money"><span class="ic">💰</span>Казна</button>
+    <button class="tab" data-a="tab" data-v="me"><span class="ic">⚙️</span>Ещё</button>
+  </nav>
+
+  <div id="backdrop" class="backdrop hidden"></div>
+  <div id="sheet" class="sheet hidden"></div>
+  <div id="toast"></div>
+
+  <script src="config.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script src="sync.js"></script>
+</body>
+</html>

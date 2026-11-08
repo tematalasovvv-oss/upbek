@@ -1,0 +1,16 @@
+{
+  "name": "UpBek",
+  "short_name": "UpBek",
+  "description": "Калории, финансы и прокачка героя",
+  "lang": "ru",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d1020",
+  "theme_color": "#0d1020",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
