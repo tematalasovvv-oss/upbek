@@ -80,7 +80,9 @@ function targets(p = S.profile) {
   const g = GOALS[p.goal] || GOALS.keep;
   const kcal = +p.kcalOverride || Math.round((base + g.adj) / 50) * 50;
   const protein = +p.proteinOverride || Math.round(p.weight * g.prot);
-  return { bmr: Math.round(bmr), base: Math.round(base), kcal, protein };
+  const fat = Math.round(p.weight * 1.0);
+  const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
+  return { bmr: Math.round(bmr), base: Math.round(base), kcal, protein, fat, carbs };
 }
 const foodKcal = (e) => e.k * e.qty;
 const foodProt = (e) => e.p * e.qty;
@@ -92,6 +94,8 @@ function dayStats(d) {
   return {
     eaten: sum(d.food, foodKcal),
     prot: sum(d.food, foodProt),
+    fat: sum(d.food, (e) => (e.f || 0) * e.qty),
+    carb: sum(d.food, (e) => (e.c || 0) * e.qty),
     actK: sum(d.act, (a) => a.kcal),
     mins: sum(sport, (a) => a.min),
     steps: sum(d.act, (a) => a.steps),
@@ -311,7 +315,8 @@ function todayCard(d) {
   return `<div class="card today">
     <div class="ring">${ring(st.eaten, need)}<div class="c"><b class="num">${fmt(st.eaten)}</b><span>из ${fmt(need)} ккал</span></div></div>
     <div class="grow">
-      <div class="mini"><div class="row"><span>🥩 Белок</span><b class="num">${Math.round(st.prot)} / ${t.protein} г</b></div>${bar(st.prot, t.protein, 'red')}</div>
+      <div class="mini"><div class="row"><span>🥩 Белок</span><b class="num">${Math.round(st.prot)} / ${t.protein} г</b></div>${bar(st.prot, t.protein, 'red')}
+        <div class="macros"><span>Жиры <b class="num">${Math.round(st.fat)}</b>/${t.fat}</span><span>Углеводы <b class="num">${Math.round(st.carb)}</b>/${t.carbs}</span></div></div>
       <div class="mini"><div class="row"><span>🔥 Потрачено</span><b class="num">${fmt(spent)} ккал</b></div>${bar(st.actK, 600, 'blue')}<div class="dim" style="margin-top:3px">организм ${fmt(t.base)} + спорт ${fmt(st.actK)}</div></div>
       <div class="mini" style="margin:0"><div class="row"><span>⚖️ Баланс</span><b class="num ${balCls}">${balance > 0 ? '+' : ''}${fmt(balance)} ккал</b></div></div>
     </div>
@@ -485,7 +490,7 @@ function renderBody() {
 
   <h2>Съедено <small>${fmt(sum(food, foodKcal))} ккал · ${Math.round(sum(food, foodProt))} г белка</small></h2>
   <div class="card list">
-    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${e.ic || '🍽️'}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · ${Math.round(foodProt(e))} г белка</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
+    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${e.ic || '🍽️'}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
   </div>
 
   <h2>Активность <small>${fmt(sum(acts, (a) => a.kcal))} ккал</small></h2>
@@ -569,6 +574,7 @@ function renderFoodSheet() {
   const anyUsage = Object.values(S.usage).some((n) => n > 0);
   return `${head}
   ${lt ? `<div class="linkbar"><span style="font-size:24px">${catOf('exp', lt.cat).ic}</span><span class="grow"><b>${catOf('exp', lt.cat).n} · ${fmt(lt.amount)} сом</b><br><span class="dim">${linked.length ? `Отмечено: ${linked.length} · ${fmt(sum(linked, foodKcal))} ккал` : 'Что ты съел? Отметь только своё'}</span></span><button class="btn sm ${linked.length ? 'gold' : 'ghost'}" data-a="close">${linked.length ? 'Готово' : 'Пропустить'}</button></div>` : ''}
+  <div class="airow"><button class="btn gold" data-a="aiPhoto">📷 Фото еды</button><button class="btn ghost" data-a="aiText">✨ Посчитать ИИ</button></div>
   <input id="foodText" placeholder="Напиши: 2 яйца, лепёшка, чай" autocomplete="off" enterkeyhint="done">
   <div id="foodParse" class="parse"></div>
   ${anyUsage ? '<div class="dim" style="margin:10px 0 -2px">⭐ Сначала — то, что ты ешь чаще</div>' : ''}
@@ -647,13 +653,14 @@ function updateFoodPreview() {
       ? `<div class="pi bad"><span>❔ «${esc(p.bad)}» — не знаю. Допиши «${esc(p.bad)} 300 ккал»</span></div>`
       : p.custom ? `<div class="pi"><span>🍽️ ${esc(p.name)}</span><b>${fmt(p.k)}</b></div>`
         : `<div class="pi"><span>${p.f.ic} ${esc(p.f.n)} × ${round1(p.qty)} <span class="dim">(${p.f.u})</span></span><b>${fmt(p.f.k * p.qty)}</b></div>`).join('')
-      + (ok.length ? `<button class="btn gold" style="margin-top:10px" data-a="saveText">Записать · ${fmt(total)} ккал</button>` : '');
+      + (ok.length ? `<button class="btn gold" style="margin-top:10px" data-a="saveText">Записать · ${fmt(total)} ккал</button>` : '')
+      + (parts.some((x) => x.bad) ? '<button class="btn ghost" style="margin-top:8px" data-a="aiText">✨ Не знаю блюдо — посчитать с ИИ</button>' : '');
   }
   const last = norm(text.split(/[,;\n+]/).pop()).replace(/[\d.,]+\s*(г|гр|мл|шт)?(?![а-я])/g, ' ').trim();
   $('#foodTiles').innerHTML = tilesHtml(last.length >= 2 ? last : '');
 }
 function foodEntry(f, qty) {
-  const e = { id: uid(), t: viewDayTime(), fid: f.id, name: f.n, ic: f.ic, unit: f.u, qty, k: f.k, p: f.p };
+  const e = { id: uid(), t: viewDayTime(), fid: f.id, name: f.n, ic: f.ic, unit: f.u, qty, k: f.k, p: f.p, f: f.f || 0, c: f.c || 0 };
   if (UI.linkTx) e.tx = UI.linkTx;
   return e;
 }
@@ -870,9 +877,9 @@ function openAddAcc() {
 function openEditFood(id) {
   const e = S.food.find((x) => x.id === id); if (!e) return;
   openSheet(() => `${sheetHead(`${e.ic || '🍽️'} ${esc(e.name)}`)}
-  <div class="dim" style="text-align:center">${fmt(e.k)} ккал и ${round1(e.p)} г белка за ${esc(e.unit || 'порцию')}</div>
+  <div class="dim" style="text-align:center">${fmt(e.k)} ккал · Б ${round1(e.p)} · Ж ${round1(e.f || 0)} · У ${round1(e.c || 0)} — за ${esc(e.unit || 'порцию')}</div>
   <div class="stepper"><button data-a="fqty" data-v="-0.5">−</button><b class="num">${round1(e.qty)}</b><button data-a="fqty" data-v="0.5">＋</button></div>
-  <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">${Math.round(foodProt(e))} г белка</div></div>
+  <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">Б ${Math.round(foodProt(e))} г · Ж ${Math.round((e.f || 0) * e.qty)} г · У ${Math.round((e.c || 0) * e.qty)} г</div></div>
   <button class="btn" data-a="close">Готово</button>
   <button class="btn danger" style="margin-top:8px" data-a="fdel">Удалить</button>`);
   UI.editFood = id;
@@ -938,11 +945,12 @@ function renderMe() {
   <h2>🎨 Тема</h2>
   <div class="themes">${THEMES.map((t) => `<button class="opt theme-opt ${(document.documentElement.dataset.theme || 'classic') === t.id ? 'on' : ''}" data-a="theme" data-v="${t.id}"><span class="sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span><b>${t.n}</b><span>${t.d}</span></button>`).join('')}</div>
 
+  ${typeof aiSection === 'function' ? aiSection() : ''}
+
   ${typeof cloudSection === 'function' ? cloudSection() : ''}
 
   <h2>Скоро</h2>
   <div class="card list">
-    <div class="item"><span class="ii">🤖</span><span class="grow"><div class="it">ИИ: калории по фото</div><div class="is">Google Gemini — бесплатно</div></span></div>
     <div class="item"><span class="ii">💑</span><span class="grow"><div class="it">Режим пары</div><div class="is">Общие квесты, рейтинг, напоминания друг другу</div></span></div>
   </div>
 
@@ -952,7 +960,7 @@ function renderMe() {
     <div class="note">Раз в неделю сохраняй копию (в «Файлы» или Telegram «Избранное»): если удалить иконку или почистить Safari, данные пропадут.</div>
     <button class="btn danger" style="margin-top:10px" data-a="reset">Стереть всё</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v1.3 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.0 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
@@ -989,7 +997,20 @@ function openProfile() {
     <button class="btn gold" data-a="pSave">Сохранить</button>`;
   });
 }
-function validProfile(p) { return p.age >= 10 && p.age <= 100 && p.height >= 120 && p.height <= 230 && p.weight >= 30 && p.weight <= 250; }
+function profileError(p) {
+  if (!(p.age >= 10 && p.age <= 100)) return { f: 'pAge', m: p.age ? `Возраст ${p.age}? Укажи от 10 до 100 лет` : 'Укажи возраст' };
+  if (!(p.height >= 120 && p.height <= 230)) return { f: 'pH', m: p.height ? `Рост ${p.height} см? Укажи от 120 до 230 см` : 'Укажи рост в сантиметрах' };
+  if (!(p.weight >= 30 && p.weight <= 250)) return { f: 'pW', m: p.weight ? `Вес ${p.weight} кг? Похоже на опечатку — укажи от 30 до 250 кг` : 'Укажи вес в килограммах' };
+  return null;
+}
+function validProfile(p) { return !profileError(p); }
+function showProfileError(p) {
+  const e = profileError(p); if (!e) return false;
+  $$('.field input').forEach((i) => i.classList.remove('bad'));
+  const el = $('#' + e.f); if (el) { el.classList.add('bad'); el.focus(); }
+  toast('⚠️ ' + e.m);
+  return true;
+}
 
 /* ---------- Онбординг ---------- */
 function renderOnboarding() {
@@ -1073,7 +1094,7 @@ const A = {
   },
   approx: (el) => {
     const a = APPROX.find((x) => x.id === el.dataset.v);
-    const e = { id: uid(), t: viewDayTime(), name: `${a.n} (примерно)`, ic: '🍽️', unit: 'приём пищи', qty: 1, k: a.k, p: a.p };
+    const e = { id: uid(), t: viewDayTime(), name: `${a.n} (примерно)`, ic: '🍽️', unit: 'приём пищи', qty: 1, k: a.k, p: a.p, f: a.f || 0, c: a.c || 0 };
     if (UI.linkTx) e.tx = UI.linkTx;
     act(() => S.food.push(e), `🍽️ ${a.n} · ~${a.k} ккал`, () => act(() => { S.food = S.food.filter((x) => x.id !== e.id); }, 'Отменено'));
   },
@@ -1161,7 +1182,7 @@ const A = {
   pLife: (el) => { const p = S.profile && UI.sheetFn ? UI.pd : UI.ob.d; readProfileInputs(p); p.life = +el.dataset.v; S.profile && UI.sheetFn ? refreshSheet() : render(); },
   pSave: () => {
     const p = UI.pd; readProfileInputs(p);
-    if (!validProfile(p)) { toast('Проверь возраст, рост и вес'); return; }
+    if (showProfileError(p)) return;
     const wChanged = p.weight !== S.profile.weight;
     closeSheet();
     act(() => {
@@ -1176,7 +1197,7 @@ const A = {
     if (o.step === 1) {
       readProfileInputs(d);
       if (!d.sex) d.sex = 'm';
-      if (!validProfile(d)) { toast('Заполни возраст, рост и вес'); return; }
+      if (showProfileError(d)) return;
       if (!d.goal) d.goal = 'bulk';
       if (!d.life) d.life = 1.2;
     }
