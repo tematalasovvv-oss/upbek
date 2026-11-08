@@ -51,7 +51,7 @@ function wholeWord(s, w) {
 
 /* ---------- данные ---------- */
 function fresh() {
-  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], bedMarks: [], cloud: null, sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
+  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
 }
 function load() {
   try { const raw = localStorage.getItem(STORE); if (raw) return Object.assign(fresh(), JSON.parse(raw)); } catch (e) { /* пусто */ }
@@ -121,6 +121,7 @@ function balances() {
   const m = {};
   S.accounts.forEach((a) => (m[a.id] = +a.start || 0));
   S.tx.forEach((t) => {
+    if (t.hist) return; // операции до начала учёта — только для хронологии
     if (t.type === 'exp') { if (t.acc in m) m[t.acc] -= t.amount; }
     else if (t.type === 'inc') { if (t.acc in m) m[t.acc] += t.amount; }
     else { if (t.acc in m) m[t.acc] -= t.amount; if (t.to in m) m[t.to] += t.amount; }
@@ -128,6 +129,7 @@ function balances() {
   return m;
 }
 const accById = (id) => S.accounts.find((a) => a.id === id);
+const accSince = (a) => (a && a.since) || S.created || 0;
 function catOf(type, id) {
   const list = type === 'inc' ? INC_CATS : EXP_CATS;
   const c = list.find((x) => x[0] === id);
@@ -148,7 +150,7 @@ function buckets() {
   const get = (k) => b[k] || (b[k] = emptyDay());
   S.food.forEach((e) => get(dayKey(e.t)).food.push(e));
   S.act.forEach((e) => get(dayKey(e.t)).act.push(e));
-  S.tx.forEach((e) => get(dayKey(e.t)).tx.push(e));
+  S.tx.forEach((e) => { if (!e.hist) get(dayKey(e.t)).tx.push(e); });
   S.weights.forEach((e) => get(dayKey(e.t)).w.push(e));
   S.sleep.forEach((e) => get(dayKey(e.wake)).sl.push(e));
   return b;
@@ -187,6 +189,7 @@ function game() {
   const todayK = dayKey();
   for (const k of keys) {
     const d = b[k];
+    xp += 0;
     xp += Math.min(d.food.length, 8) * 5 + Math.min(d.tx.length, 10) * 4 + Math.min(d.act.length, 3) * 10 + (d.w.length ? 10 : 0) + (d.sl.length ? 5 : 0);
     const q = questsOf(d);
     let all = true;
@@ -195,6 +198,7 @@ function game() {
     if (q[0].done) kcalDays++;
     if (q[1].done) protDays++;
   }
+  xp += sum(S.coach || [], (c) => (c.goals || []).filter((x) => x.done).length * 30);
   // серия
   let streak = 0; const t = new Date(); t.setHours(12, 0, 0, 0);
   if (!b[dayKey(t)]) t.setDate(t.getDate() - 1);
@@ -260,6 +264,26 @@ function toast(html, undo) {
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), undo ? 4500 : 3000);
+}
+
+/* ---------- подтверждение и защита от двойных нажатий ---------- */
+function ask(html, yes = 'Да', no = 'Нет') {
+  return new Promise((res) => {
+    const el = document.createElement('div'); el.className = 'askbox';
+    el.innerHTML = `<div class="askcard"><div class="asktext">${html}</div><div class="row"><button class="btn ghost" data-r="0">${no}</button><button class="btn gold" data-r="1">${yes}</button></div></div>`;
+    el.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-r]');
+      if (!b && e.target !== el) return;
+      el.remove(); res(!!(b && b.dataset.r === '1'));
+    });
+    document.body.appendChild(el);
+  });
+}
+let lastAddAt = 0;
+function tooFast() {
+  const now = Date.now();
+  if (now - lastAddAt < 1000) { toast('⏳ Секунду…'); return true; }
+  lastAddAt = now; return false;
 }
 
 /* ---------- sheet ---------- */
@@ -420,6 +444,7 @@ function renderHero() {
   </div>
 
   ${promptCards()}
+  ${typeof coachCard === 'function' ? coachCard() : ''}
 
   <div class="quick">
     <button class="qa" data-a="money" data-v="exp"><span class="ic">💰</span>Деньги</button>
@@ -668,9 +693,12 @@ function foodEntry(f, qty) {
 /* ---------- Казна ---------- */
 function renderMoney() {
   const g = game(), bal = g.bal;
-  const now = new Date(); const mStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const monthTx = S.tx.filter((t) => t.t >= mStart);
-  const inc = sum(monthTx.filter((t) => t.type === 'inc'), (t) => t.amount);
+  const now = new Date();
+  const ms = new Date(now.getFullYear(), now.getMonth() + (UI.mOff || 0), 1);
+  const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 1);
+  const fAcc = UI.mAcc || null;
+  const monthTx = S.tx.filter((t) => t.t >= ms.getTime() && t.t < me.getTime() && (!fAcc || t.acc === fAcc || t.to === fAcc));
+  const inc = sum(monthTx.filter((t) => t.type === 'inc' && !t.rec), (t) => t.amount);
   const exp = sum(monthTx.filter((t) => t.type === 'exp'), (t) => t.amount);
   const byCat = {};
   monthTx.filter((t) => t.type === 'exp').forEach((t) => (byCat[t.cat] = (byCat[t.cat] || 0) + t.amount));
@@ -678,40 +706,48 @@ function renderMoney() {
   const maxCat = cats.length ? cats[0][1] : 1;
   const unsorted = S.tx.filter(isUnsorted).length;
   const accs = [...S.accounts].sort((a, b) => (b.id === S.main) - (a.id === S.main));
+  const mName = `${MONTHS_N[ms.getMonth()]}${ms.getFullYear() !== now.getFullYear() ? ' ' + ms.getFullYear() : ''}`;
 
-  const list = [...S.tx].sort((a, b) => b.t - a.t).slice(0, 80);
+  const list = [...monthTx].sort((a, b) => b.t - a.t);
   const groups = [];
   list.forEach((t) => { const k = dayKey(t.t); let gr = groups[groups.length - 1]; if (!gr || gr.k !== k) groups.push((gr = { k, items: [] })); gr.items.push(t); });
 
   return `
   <h1>Казна</h1>
   <div class="card">
-    <div class="total"><div class="tl">Всего золота</div><div class="tv num">${som(g.total)}</div></div>
-    <div class="split">
-      <div><span>Пришло за месяц</span><b class="green num">+${fmt(inc)}</b></div>
-      <div><span>Ушло за месяц</span><b class="red num">−${fmt(exp)}</b></div>
-    </div>
+    <div class="total"><div class="tl">Всего золота сейчас</div><div class="tv num">${som(g.total)}</div></div>
   </div>
   <div class="accs">
     ${accs.map((a) => `<button class="acc" style="--c:${a.color}" data-a="acc" data-v="${a.id}">${a.id === S.main ? '<span class="star">★</span>' : ''}<div class="an">${esc(a.name)}</div><div class="av">${fmt(bal[a.id])}</div></button>`).join('')}
     <button class="acc" data-a="addAcc" style="--c:var(--line)"><div class="an">Новый счёт</div><div class="av muted">＋</div></button>
   </div>
-  <div class="row" style="margin-top:12px">
+  <div class="row3" style="margin-top:12px">
     <button class="btn ghost" data-a="rec">🧮 Сверка</button>
     <button class="btn ghost" data-a="money" data-v="tr">🔁 Перевод</button>
+    <button class="btn ghost" data-a="stmt">📥 Выписка</button>
   </div>
-  <div class="note">Забыл записать траты? Нажми «Сверить», введи, сколько реально лежит в банке, — разница запишется сама.</div>
+  <div class="note">Забыл записывать? «📥 Выписка» — загрузи PDF или скриншоты из банка, ИИ сам разнесёт операции по дням. «🧮 Сверка» — впиши реальный баланс, разница запишется.</div>
 
   ${unsorted ? `<button class="alert" style="margin-top:14px" data-a="sortNext"><span style="font-size:22px">❓</span><span class="grow">Ждут категорию: <b>${unsorted}</b></span><span>Разобрать ›</span></button>` : ''}
 
-  ${cats.length ? `<h2>Куда уходит <small>${MONTHS_N[now.getMonth()]}</small></h2>
-  <div class="card">${cats.map(([id, v]) => { const c = catOf('exp', id); return `<div class="catbar"><div class="row"><span>${c.ic} ${c.n}</span><b class="num">${fmt(v)} · ${Math.round((v / (exp || 1)) * 100)}%</b></div>${bar(v, maxCat, 'gold')}</div>`; }).join('')}</div>` : ''}
-
-  <h2>История</h2>
+  <h2>Хронология</h2>
+  <div class="daynav">
+    <button data-a="mMonth" data-v="-1">‹</button>
+    <b>${mName}</b>
+    <button data-a="mMonth" data-v="1" ${(UI.mOff || 0) >= 0 ? 'style="visibility:hidden"' : ''}>›</button>
+  </div>
+  <div class="chips" style="margin-bottom:10px"><button class="chip ${!fAcc ? 'on' : ''}" data-a="mFilter" data-v="">Все счета</button>${S.accounts.map((a) => `<button class="chip ${fAcc === a.id ? 'on' : ''}" data-a="mFilter" data-v="${a.id}"><i class="dot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join('')}</div>
+  <div class="card">
+    <div class="split" style="margin-top:0">
+      <div><span>Пришло</span><b class="green num">+${fmt(inc)}</b></div>
+      <div><span>Ушло</span><b class="red num">−${fmt(exp)}</b></div>
+    </div>
+    ${cats.length ? `<div style="margin-top:14px">${cats.map(([id, v]) => { const c = catOf('exp', id); return `<div class="catbar"><div class="row"><span>${c.ic} ${c.n}</span><b class="num">${fmt(v)} · ${Math.round((v / (exp || 1)) * 100)}%</b></div>${bar(v, maxCat, 'gold')}</div>`; }).join('')}</div>` : ''}
+  </div>
   ${groups.length ? groups.map((gr) => {
     const out = sum(gr.items.filter((t) => t.type === 'exp'), (t) => t.amount);
     return `<div class="day-head"><span>${dayLabel(gr.k)}</span><span>${out ? '−' + fmt(out) : ''}</span></div><div class="card list" style="margin-bottom:0">${gr.items.map(txRow).join('')}</div>`;
-  }).join('') : '<div class="card empty">Здесь появятся твои доходы и расходы.<br>Жми большую кнопку ＋ внизу.</div>'}
+  }).join('') : '<div class="card empty">В этом месяце записей нет.<br>Жми ＋ внизу или загрузи выписку.</div>'}
   `;
 }
 function txRow(t) {
@@ -723,7 +759,7 @@ function txRow(t) {
   const c = catOf(t.type, t.cat);
   const unsorted = isUnsorted(t);
   const lf = S.food.filter((f) => f.tx === t.id);
-  const eat = lf.length ? ` · 🍗 ${fmt(sum(lf, foodKcal))} ккал` : '';
+  const eat = (lf.length ? ` · 🍗 ${fmt(sum(lf, foodKcal))} ккал` : '') + (t.hist ? ' · 📜 до учёта' : t.imp ? ' · 📥' : '');
   return `<button class="item" data-a="editTx" data-v="${t.id}"><span class="ii">${c.ic}</span><span class="grow"><div class="it">${unsorted ? '<span class="badge">?</span> ' : ''}${esc(t.note || c.n)}</div><div class="is">${t.note ? c.n + ' · ' : ''}${esc(a ? a.name : '—')} · ${hhmm(t.t)}${eat}</div></span><span class="iv ${t.type === 'inc' ? 'green' : ''}">${t.type === 'inc' ? '+' : '−'}${fmt(t.amount)}</span></button>`;
 }
 
@@ -805,7 +841,7 @@ function moneyTime() {
   if (m.day === 1) return m.editId && dayKey(m.t) === dayKey(Date.now() - DAY) ? m.t : Date.now() - DAY;
   return m.t;
 }
-function saveMoney() {
+async function saveMoney() {
   const m = UI.money;
   const amount = +m.amount;
   if (!amount) { const el = $('#mAmount'); el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); return; }
@@ -815,6 +851,12 @@ function saveMoney() {
   if (m.mode === 'tr') tx.to = m.to;
   const old = m.editId ? S.tx.find((t) => t.id === m.editId) : null;
   if (old && old.rec) tx.rec = true;
+  if (old && old.imp) { tx.imp = true; if (old.hist) tx.hist = true; }
+  if (!old) {
+    if (tooFast()) return;
+    const dup = S.tx.find((t) => !t.rec && t.type === tx.type && t.amount === tx.amount && t.cat === tx.cat && t.acc === tx.acc && Math.abs(t.t - tx.t) < 5 * 60000);
+    if (dup && !(await ask(`Такая же запись уже есть: <b>${tx.type === 'inc' ? '+' : '−'}${fmt(tx.amount)} · ${tx.type === 'tr' ? 'перевод' : catOf(tx.type, tx.cat).n}</b> в ${hhmm(dup.t)}.<br>Записать ещё раз?`, 'Да, ещё раз', 'Нет'))) return;
+  }
   closeSheet();
   if (old) {
     act(() => { S.tx = S.tx.map((t) => (t.id === old.id ? tx : t)); }, 'Сохранено ✓');
@@ -958,9 +1000,11 @@ function renderMe() {
   <div class="card">
     <div class="row"><button class="btn ghost" data-a="export">📤 Резервная копия</button><button class="btn ghost" data-a="import">📥 Загрузить</button></div>
     <div class="note">Раз в неделю сохраняй копию (в «Файлы» или Telegram «Избранное»): если удалить иконку или почистить Safari, данные пропадут.</div>
-    <button class="btn danger" style="margin-top:10px" data-a="reset">Стереть всё</button>
+    <button class="btn ghost" style="margin-top:10px" data-a="appUpdate">🔄 Обновить приложение</button>
+    <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
+    <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.0 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.2 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
@@ -1061,6 +1105,8 @@ const A = {
   },
   mCat: (el) => { UI.money.cat = el.dataset.v; if (UI.money.editId) refreshSheet(); else saveMoney(); },
   mSave: saveMoney,
+  mMonth: (el) => { UI.mOff = Math.min(0, (UI.mOff || 0) + +el.dataset.v); render(); },
+  mFilter: (el) => { UI.mAcc = el.dataset.v || null; render(); },
   mMore: () => { UI.allCats = !UI.allCats; refreshSheet(); },
   mFreq: (el) => { const f = UI.freq[+el.dataset.v]; if (!f) return; const m = UI.money; m.cat = f.cat; m.amount = String(f.amount); if (accById(f.acc)) m.acc = f.acc; saveMoney(); },
   mDel: () => { const id = UI.money.editId; const old = S.tx.find((t) => t.id === id); closeSheet(); act(() => { S.tx = S.tx.filter((t) => t.id !== id); }, 'Удалено', () => act(() => S.tx.push(old), 'Восстановлено')); },
@@ -1079,26 +1125,39 @@ const A = {
   newAccBank: (el) => { UI.newAcc = el.dataset.v; refreshSheet(); },
   addAccSave: () => {
     const b = BANKS.find((x) => x.id === UI.newAcc);
-    const a = { id: uid(), bank: b.id, name: $('#naName').value.trim() || b.name, color: b.color, start: Math.round(parseFloat(($('#naBal').value || '0').replace(/\s/g, '').replace(',', '.')) || 0) };
+    const a = { id: uid(), bank: b.id, name: $('#naName').value.trim() || b.name, color: b.color, since: Date.now(), start: Math.round(parseFloat(($('#naBal').value || '0').replace(/\s/g, '').replace(',', '.')) || 0) };
     S.accounts.push(a); if (!S.main) S.main = a.id; save(); closeSheet(); render(); toast(`Счёт «${esc(a.name)}» добавлен`);
   },
 
   // тело
   day: (el) => { UI.foodDay = Math.min(0, UI.foodDay + +el.dataset.v); render(); },
   allFoods: () => { UI.allFoods = !UI.allFoods; refreshSheet(); },
-  addFood: (el) => {
+  addFood: async (el) => {
     const f = foodById(el.dataset.v); if (!f) return;
+    if (tooFast()) return;
+    const key = viewDayKey();
+    const same = S.food.filter((x) => x.fid === f.id && dayKey(x.t) === key).sort((a, b) => b.t - a.t);
+    if (same.length) {
+      const n = sum(same, (x) => x.qty);
+      const ok = await ask(`${f.ic} <b>${esc(f.n)}</b> уже записано ${dayLabel(key).toLowerCase()} в ${hhmm(same[0].t)} (${round1(n)} ${esc(f.u)}).<br>Записать ещё?`, 'Да, ещё', 'Нет');
+      if (!ok) return;
+      lastAddAt = Date.now();
+    }
     const e = foodEntry(f, f.dq || 1);
     const inp = $('#foodText'); if (inp) inp.value = '';
     act(() => { S.food.push(e); S.usage[f.id] = (S.usage[f.id] || 0) + 1; }, `${f.ic} ${esc(f.n)} · ${fmt(foodKcal(e))} ккал`, () => act(() => { S.food = S.food.filter((x) => x.id !== e.id); S.usage[f.id] = Math.max(0, (S.usage[f.id] || 1) - 1); }, 'Отменено'));
   },
-  approx: (el) => {
+  approx: async (el) => {
     const a = APPROX.find((x) => x.id === el.dataset.v);
+    if (tooFast()) return;
+    const recent = S.food.find((x) => x.name === `${a.n} (примерно)` && Date.now() - x.t < 60 * 60000 && UI.foodDay === 0);
+    if (recent && !(await ask(`🍽️ «${a.n}» уже записан в ${hhmm(recent.t)}.<br>Записать ещё один приём пищи?`, 'Да', 'Нет'))) return;
     const e = { id: uid(), t: viewDayTime(), name: `${a.n} (примерно)`, ic: '🍽️', unit: 'приём пищи', qty: 1, k: a.k, p: a.p, f: a.f || 0, c: a.c || 0 };
     if (UI.linkTx) e.tx = UI.linkTx;
     act(() => S.food.push(e), `🍽️ ${a.n} · ~${a.k} ккал`, () => act(() => { S.food = S.food.filter((x) => x.id !== e.id); }, 'Отменено'));
   },
   saveText: () => {
+    if (tooFast()) return;
     const parts = parseFood($('#foodText').value).filter((p) => !p.bad);
     const t = viewDayTime();
     const entries = parts.map((p) => (p.custom
@@ -1212,7 +1271,7 @@ const A = {
     if (!chosen.length) { toast('Отметь хотя бы один счёт'); return; }
     const d = o.d;
     S.profile = { name: d.name || 'Герой', sex: d.sex || 'm', age: d.age, height: d.height, weight: d.weight, startWeight: d.weight, goal: d.goal || 'bulk', life: d.life || 1.2, kcalOverride: null, proteinOverride: null };
-    S.accounts = chosen.map((b) => ({ id: b.id, bank: b.id, name: b.name, color: b.color, start: Math.round(parseFloat(String(o.banks[b.id].bal || '0').replace(/\s/g, '').replace(',', '.')) || 0) }));
+    S.accounts = chosen.map((b) => ({ id: b.id, bank: b.id, name: b.name, color: b.color, since: Date.now(), start: Math.round(parseFloat(String(o.banks[b.id].bal || '0').replace(/\s/g, '').replace(',', '.')) || 0) }));
     S.main = o.main && o.banks[o.main]?.on ? o.main : S.accounts[0].id;
     S.weights = [{ id: uid(), t: Date.now(), kg: d.weight }];
     S.lastLevel = 1;
@@ -1251,6 +1310,22 @@ const A = {
       } catch (e) { toast('Это не похоже на копию UpBek'); }
     };
     i.click();
+  },
+  clearRecords: async () => {
+    const n = S.food.length + S.tx.length + S.act.length + S.sleep.length + S.weights.length;
+    if (!(await ask(`Удалить все записи (${n}): еду, траты, спорт, сон и вес?<br>Профиль, счета и их начальные балансы останутся. <b>Отменить нельзя.</b>`, 'Удалить', 'Отмена'))) return;
+    const w = S.profile.weight;
+    S.food = []; S.tx = []; S.act = []; S.sleep = []; S.bedMarks = []; S.coach = []; S.usage = {}; S.seenAch = []; S.lastLevel = 1;
+    S.weights = [{ id: uid(), t: Date.now(), kg: w }]; S.profile.startWeight = w;
+    save(); render(); toast('🧹 Записи удалены. Начинаем с чистого листа!');
+  },
+  appUpdate: async () => {
+    toast('🔄 Обновляю…');
+    try {
+      if ('caches' in window) for (const k of await caches.keys()) await caches.delete(k);
+      if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.update();
+    } catch (e) { /* ок */ }
+    setTimeout(() => location.reload(), 400);
   },
   reset: () => {
     if (!confirm('Точно стереть ВСЕ данные? Это нельзя отменить.')) return;
