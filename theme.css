@@ -134,3 +134,8 @@
 [data-theme="comic"] .levelup h2 { color: #fff; font-size: 40px; -webkit-text-stroke: 2px #000; text-shadow: 4px 4px 0 var(--pink); font-style: italic; text-transform: uppercase; }
 [data-theme="comic"] .levelup .muted, [data-theme="comic"] .levelup .dim { color: #000; font-weight: 800; }
 [data-theme="comic"] .levelup .gold { color: #b0006a; }
+
+/* меньше движения, если так настроено в iPhone */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; }
+}

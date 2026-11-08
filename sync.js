@@ -3,7 +3,7 @@
 
 const CLOUD = window.UPBEK_CONFIG || {};
 const cloudReady = () => !!(CLOUD.url && CLOUD.key);
-const shortcutUrl = () => `${CLOUD.url}/rest/v1/rpc/push_event`;
+const shortcutUrl = () => `${CLOUD.url}/rest/v1/rpc/push_event?apikey=${CLOUD.key}`;
 
 function toB64(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
 function fromB64(s) { return Uint8Array.from(atob(s), (c) => c.charCodeAt(0)); }
@@ -171,12 +171,12 @@ function shortcutSteps(kind, trigger) {
     ${trigger}
     <li>Выбери <b>«Запускать сразу»</b> и выключи «Уведомлять при запуске» → <b>Далее</b>.</li>
     <li><b>«Новая пустая команда»</b> → добавь действие <b>«Получить содержимое URL»</b>.</li>
-    <li>Вставь <b>URL</b> (кнопка ниже). Нажми <b>«⌄»</b> рядом:<br>Метод: <b>POST</b><br>Заголовки → ＋ : ключ <b>apikey</b>, значение — <b>Ключ</b> (ниже)<br>Тело запроса: <b>JSON</b> → ＋ Текст: <b>p_token</b> = твой код; ＋ Текст: <b>p_kind</b> = <b>${kind}</b>${kind === 'sms' ? '; ＋ Текст: <b>p_text</b> = переменная <b>«Ввод команды»</b> (текст SMS)' : ''}</li>
+    <li>Вставь <b>URL</b> (кнопка ниже). Нажми <b>«⌄»</b> рядом:<br>Метод: <b>POST</b><br>Тело запроса: <b>JSON</b> → ＋ Текст: <b>p_token</b> = твой код; ＋ Текст: <b>p_kind</b> = <b>${kind}</b>${kind === 'sms' ? '; ＋ Текст: <b>p_text</b> = переменная <b>«Ввод команды»</b> (текст SMS)' : ''}</li>
   </ol>`;
 }
 function openAutoHelp(which) {
   const c = S.cloud || {};
-  const rows = copyRow('URL', shortcutUrl(), 'url') + copyRow('Ключ (apikey)', CLOUD.key, 'key') + copyRow('Твой код (p_token)', c.token || '', 'token');
+  const rows = copyRow('URL', shortcutUrl(), 'url') + copyRow('Твой код (p_token)', c.token || '', 'token');
   const body = {
     sleep: `${sheetHead('😴 Автозапись сна')}
       <div class="help">
