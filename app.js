@@ -974,27 +974,12 @@ function renderMe() {
     <button class="item" data-a="addAcc"><span class="ii">＋</span><span class="grow it">Добавить счёт</span></button>
   </div>
 
-  <h2>Установить на iPhone</h2>
-  <div class="card help">
-    <ol>
-      <li>Открой этот сайт в <b>Safari</b>.</li>
-      <li>Нажми кнопку «Поделиться» <b>⬆︎</b> внизу экрана.</li>
-      <li>Выбери <b>«На экран „Домой“»</b> → «Добавить».</li>
-    </ol>
-    <p class="dim">Иконка UpBek появится рядом с другими приложениями и откроется на весь экран.</p>
-  </div>
-
   <h2>🎨 Тема</h2>
   <div class="themes">${THEMES.map((t) => `<button class="opt theme-opt ${(document.documentElement.dataset.theme || 'classic') === t.id ? 'on' : ''}" data-a="theme" data-v="${t.id}"><span class="sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span><b>${t.n}</b><span>${t.d}</span></button>`).join('')}</div>
 
   ${typeof aiSection === 'function' ? aiSection() : ''}
 
   ${typeof cloudSection === 'function' ? cloudSection() : ''}
-
-  <h2>Скоро</h2>
-  <div class="card list">
-    <div class="item"><span class="ii">💑</span><span class="grow"><div class="it">Режим пары</div><div class="is">Общие квесты, рейтинг, напоминания друг другу</div></span></div>
-  </div>
 
   <h2>Данные</h2>
   <div class="card">
@@ -1004,7 +989,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.2 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.3 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
