@@ -10,8 +10,8 @@ function openVoice() {
 }
 function renderVoice() {
   const on = UI.voiceRec;
-  return `${sheetHead('🎤 Скажи, что было')}
-  <p class="muted" style="margin-top:0">Например: <i>«Потратил 500 сом в столовой, съел бризоль и чай»</i> или <i>«Такси 250, вечером гулял 40 минут»</i>. ИИ сам разнесёт траты, еду и спорт.</p>
+  return `${sheetHead('🎤 Опиши, что и на что потратил')}
+  <p class="muted" style="margin-top:0">Например: <i>«500 сом в столовой, съел бризоль и чай»</i> или <i>«такси 250, вечером гулял 40 минут»</i>. ИИ сам разнесёт траты, еду и спорт — потом всё можно поправить.</p>
   <div class="voice-wrap">
     <button class="mic ${on ? 'on' : ''}" data-a="${on ? 'vStop' : 'vStart'}" aria-label="${on ? 'Остановить' : 'Начать запись'}">${on ? '■' : '🎤'}</button>
     <div class="dim" id="vTime">${on ? '0:00 · нажми, чтобы закончить' : 'Нажми и говори'}</div>
@@ -129,12 +129,12 @@ function renderVoiceResult() {
   const yd = (x) => (x.y ? ' · вчера' : '');
   return `${sheetHead('🎤 Вот что я понял')}
   ${v.transcript ? `<div class="heard">«${esc(v.transcript)}»</div>` : ''}
-  ${v.tx.length ? `<h3 class="vh">💸 Деньги</h3><div class="card list">${v.tx.map((x, i) => { const c = catOf(x.type, x.cat); const a = accById(x.acc); return `<button class="item ${x.on ? '' : 'off'}" data-a="vTog" data-v="tx:${i}"><span class="ii">${x.on ? c.ic : '✕'}</span><span class="grow"><div class="it">${esc(x.note || c.n)}</div><div class="is">${c.n.replace('­', '')} · ${esc(a ? a.name : '—')}${yd(x)}</div></span><span class="iv ${x.type === 'inc' ? 'green' : ''}">${x.type === 'inc' ? '+' : '−'}${fmt(x.amount)}</span></button>`; }).join('')}</div>` : ''}
+  ${v.tx.length ? `<h3 class="vh">💸 Деньги</h3><div class="card list">${v.tx.map((x, i) => { const c = catOf(x.type, x.cat); const a = accById(x.acc); return `<div class="item ${x.on ? '' : 'off'}"><button class="ii" data-a="vTog" data-v="tx:${i}">${x.on ? c.ic : '✕'}</button><button class="rowbtn" data-a="rowEdit" data-v="v:${i}"><span class="grow"><div class="it">${esc(x.note || c.n)}</div><div class="is">${c.n.replace('\u00AD', '')} · ${esc(a ? a.name : '—')}${yd(x)} · <span class="gold">изменить ✏️</span></div></span><span class="iv ${x.type === 'inc' ? 'green' : ''}">${x.type === 'inc' ? '+' : '−'}${fmt(x.amount)}</span></button></div>`; }).join('')}</div>` : ''}
   ${v.food.length ? `<h3 class="vh">🍗 Еда</h3><div class="card list">${v.food.map((x, i) => `<div class="item aiitem ${x.on ? '' : 'off'}"><button class="ii" data-a="vTog" data-v="food:${i}">${x.on ? esc(x.emoji || '🍽️') : '✕'}</button><span class="grow"><div class="it">${esc(x.name)}</div><div class="is">~${Math.round(x.grams * x.mult)} г · Б ${Math.round(x.protein * x.mult)} · Ж ${Math.round(x.fat * x.mult)} · У ${Math.round(x.carbs * x.mult)}${yd(x)}</div></span><span class="mini-step"><button data-a="vMult" data-v="${i}:-0.5">−</button><b>${x.mult === 1 ? '1' : round1(x.mult)}</b><button data-a="vMult" data-v="${i}:0.5">＋</button></span><b class="iv">${fmt(x.kcal * x.mult)}</b></div>`).join('')}</div>` : ''}
   ${v.act.length ? `<h3 class="vh">🏃 Спорт</h3><div class="card list">${v.act.map((x, i) => { const A2 = actById(x.kind); return `<button class="item ${x.on ? '' : 'off'}" data-a="vTog" data-v="act:${i}"><span class="ii">${x.on ? A2.ic : '✕'}</span><span class="grow"><div class="it">${A2.n}</div><div class="is">${x.kind === 'steps' ? fmt(x.steps) + ' шагов' : Math.round(x.minutes) + ' мин'}${yd(x)}</div></span></button>`; }).join('')}</div>` : ''}
   ${v.comment ? `<div class="note">💡 ${esc(v.comment)}</div>` : ''}
   <button class="btn gold" style="margin-top:12px" data-a="vSave" ${n ? '' : 'disabled'}>Записать${n ? ` (${n})` : ''}</button>
-  <div class="hint" style="margin-top:8px">Нажми на строку, чтобы убрать. Категорию и счёт потом можно поправить в Казне.</div>`;
+  <div class="hint" style="margin-top:8px">Значок слева — убрать или вернуть. Нажми на строку траты, чтобы поменять категорию, сумму или счёт.</div>`;
 }
 
 Object.assign(A, {
@@ -168,6 +168,38 @@ Object.assign(A, {
       () => act(() => { S.tx = S.tx.filter((x) => !ids.has(x.id)); S.food = S.food.filter((x) => !ids.has(x.id)); S.act = S.act.filter((x) => !ids.has(x.id)); }, 'Отменено'));
   },
 });
+
+/* ---- правка строки (выписка или голос) до того, как принять ---- */
+function rowRef(kind, i) { return kind === 'st' ? UI.stRows[i] : UI.vRes.tx[i]; }
+function openRowEdit(kind, i) { UI.edRow = { kind, i }; openSheet(renderRowEdit); }
+function readRowInputs(x) {
+  const a = parseFloat(String(($('#reAmt') || {}).value || '').replace(/\s/g, '').replace(',', '.'));
+  if (a > 0) x.amount = Math.round(a * 100) / 100;
+  const n = $('#reNote'); if (n) x.note = n.value.trim().slice(0, 60);
+}
+function renderRowEdit() {
+  const { kind, i } = UI.edRow; const x = rowRef(kind, i);
+  const cats = pickCats(x.type === 'inc' ? INC_CATS : EXP_CATS);
+  return `${sheetHead('✏️ Поправить запись')}
+  <div class="seg" style="margin-bottom:12px"><button class="exp ${x.type === 'exp' ? 'on' : ''}" data-a="reType" data-v="exp">Расход</button><button class="inc ${x.type === 'inc' ? 'on' : ''}" data-a="reType" data-v="inc">Доход</button></div>
+  <div class="grid2">
+    <div class="field"><label>Сумма, сом</label><input id="reAmt" inputmode="decimal" value="${x.amount}"></div>
+    <div class="field"><label>Описание</label><input id="reNote" value="${esc(x.note)}"></div>
+  </div>
+  ${kind === 'v' ? `<div class="hint" style="text-align:left">Счёт</div><div class="chips" style="margin-bottom:6px">${accChips('reAcc', x.acc)}</div>` : ''}
+  <div class="hint" style="text-align:left;margin-top:6px">Категория</div>
+  <div class="cats">${cats.map((c) => `<button class="cat ${x.cat === c[0] ? 'on' : ''}" data-a="reCat" data-v="${c[0]}"><span class="ic">${c[1]}</span><span>${c[2]}</span></button>`).join('')}</div>
+  <button class="btn gold" data-a="reDone">Готово</button>`;
+}
+function backToRows() { openSheet(UI.edRow.kind === 'st' ? renderStmt : renderVoiceResult); }
+Object.assign(A, {
+  rowEdit: (el) => { const [k, i] = el.dataset.v.split(':'); openRowEdit(k, +i); },
+  reType: (el) => { const x = rowRef(UI.edRow.kind, UI.edRow.i); readRowInputs(x); if (x.type !== el.dataset.v) { x.type = el.dataset.v; x.cat = x.type === 'inc' ? 'unknown_in' : 'unknown'; } refreshSheet(); },
+  reCat: (el) => { const x = rowRef(UI.edRow.kind, UI.edRow.i); readRowInputs(x); x.cat = el.dataset.v; refreshSheet(); },
+  reAcc: (el) => { const x = rowRef(UI.edRow.kind, UI.edRow.i); readRowInputs(x); x.acc = el.dataset.v; refreshSheet(); },
+  reDone: () => { const x = rowRef(UI.edRow.kind, UI.edRow.i); readRowInputs(x); x.on = true; backToRows(); },
+});
+
 // закрыли окно во время записи — останавливаем микрофон
 const _closeSheet = A.close;
 A.close = () => { voiceCancel(); _closeSheet(); };

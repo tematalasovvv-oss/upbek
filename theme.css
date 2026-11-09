@@ -184,3 +184,7 @@ textarea { resize: none; }
 .heard { font-style: italic; color: var(--muted); background: var(--card); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
 .vh { font-size: 15px; margin: 14px 0 6px; }
 [data-theme="comic"] .mic { border: 3px solid #000; box-shadow: 5px 5px 0 #000, 5px 5px 0 3px var(--pink); }
+
+/* ---------- v2.5: правка строк до принятия ---------- */
+.rowbtn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; }
+.list .item > .ii { cursor: pointer; }
