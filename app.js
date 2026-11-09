@@ -550,6 +550,7 @@ function sleepCard(key) {
 function openHub() {
   openSheet(() => `${sheetHead('Что записать?')}
   <div class="hub3">
+    <button class="big3 voicebtn" data-a="voice"><span class="ic">🎤</span><span><b>Сказать голосом</b><small>«потратил 500 и съел бризоль»</small></span></button>
     <button class="big3" data-a="money" data-v="exp"><span class="ic">💰</span><span><b>Деньги</b><small>расход · доход · перевод</small></span></button>
     <button class="big3" data-a="foodSheet" data-v="food"><span class="ic">🍗</span><span><b>Еда</b><small>что съел · шаги · вес · сон</small></span></button>
     <button class="big3" data-a="sport"><span class="ic">🏃</span><span><b>Спорт</b><small>прогулка · фитнес</small></span></button>
@@ -989,7 +990,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.3 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.4 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {

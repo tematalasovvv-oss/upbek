@@ -11,36 +11,59 @@ function aiErr(m) {
   m = String(m || '');
   if (/location is not supported|not available in your (country|region)/i.test(m)) return 'Gemini недоступен в твоём регионе. Напиши мне — подключу через наш сервер.';
   if (/API key not valid|API_KEY_INVALID|invalid api key/i.test(m)) return 'Ключ не подходит — проверь, что скопирован целиком.';
-  if (/quota|RESOURCE_EXHAUSTED|rate/i.test(m)) return 'Лимит бесплатных запросов исчерпан — попробуй чуть позже.';
+  if (/per ?day|PerDay|daily/i.test(m)) return 'Дневной лимит бесплатных запросов исчерпан — завтра снова заработает.';
+  if (/overloaded|UNAVAILABLE|high demand|503/i.test(m)) return 'Gemini сейчас перегружен — попробуй через минуту.';
+  if (/quota|RESOURCE_EXHAUSTED|rate|429/i.test(m)) return 'Слишком много запросов подряд — подожди минуту.';
   if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'Нет интернета или Google недоступен.';
+  if (/mime|audio/i.test(m)) return 'Не получилось разобрать запись — попробуй написать текстом.';
   return m.slice(0, 160);
 }
-// выбираем самую свежую стабильную модель Flash, доступную по ключу
+// выбираем самую свежую стабильную модель Flash + запасные (на случай перегрузки)
 async function aiPickModel(key) {
   const r = await fetch(`${GEM}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(aiErr((j.error && j.error.message) || 'HTTP ' + r.status));
   const ver = (n) => { const m = n.match(/gemini-(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
-  const ok = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')
-    && /gemini-[\d.]+-flash/.test(m.name) && !/(lite|image|tts|live|audio|embedding|thinking|8b)/.test(m.name));
-  const stable = ok.filter((m) => !/(preview|exp)/.test(m.name));
-  const list = (stable.length ? stable : ok).sort((a, b) => ver(b.name) - ver(a.name) || a.name.length - b.name.length);
-  return list.length ? list[0].name.replace('models/', '') : 'gemini-2.5-flash';
+  const all = (j.models || []).filter((m) => (m.supportedGenerationMethods || []).includes('generateContent')
+    && /gemini-[\d.]+-flash/.test(m.name) && !/(image|tts|live|audio|embedding|thinking|8b)/.test(m.name) && !/(preview|exp)/.test(m.name))
+    .sort((a, b) => ver(b.name) - ver(a.name) || a.name.length - b.name.length).map((m) => m.name.replace('models/', ''));
+  const main = all.filter((n) => !/lite/.test(n));
+  const model = main[0] || all[0] || 'gemini-2.5-flash';
+  const alts = [...main.slice(1, 2), ...all.filter((n) => /lite/.test(n)).slice(0, 1)].filter((n) => n !== model);
+  return { model, alts };
 }
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+function aiStatus(text) { const el = document.getElementById('aiStatus'); if (el) el.textContent = text; }
+// запрос с повторами: при «занято/перегружено» ждём и повторяем, потом пробуем запасную модель
 async function aiCall(parts, schema) {
   const c = aiCfg();
   if (!c.key) throw new Error('NO_KEY');
-  const r = await fetch(`${GEM}/models/${c.model || 'gemini-2.5-flash'}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': c.key },
-    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema } }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(aiErr((j.error && j.error.message) || 'HTTP ' + r.status));
-  const text = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map((p) => p.text || '').join('');
-  if (!text) throw new Error('ИИ не ответил — попробуй ещё раз');
-  aiCount();
-  return JSON.parse(text);
+  const models = [...new Set([c.model || 'gemini-2.5-flash', ...(c.alts || [])])];
+  const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema } });
+  let last = '';
+  for (let mi = 0; mi < models.length; mi++) {
+    if (mi > 0) aiStatus('Основная модель занята — пробую запасную…');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let r, j = {};
+      try {
+        r = await fetch(`${GEM}/models/${models[mi]}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': c.key }, body });
+        j = await r.json().catch(() => ({}));
+      } catch (e) { last = e.message; if (attempt < 2) { aiStatus('Нет связи — повторяю…'); await wait(2000); continue; } break; }
+      if (r.ok) {
+        const text = ((j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || []).map((p) => p.text || '').join('');
+        if (!text) { last = 'ИИ не ответил — попробуй ещё раз'; continue; }
+        aiCount();
+        return JSON.parse(text);
+      }
+      last = (j.error && j.error.message) || 'HTTP ' + r.status;
+      if (![429, 500, 502, 503, 504].includes(r.status)) throw new Error(aiErr(last));
+      if (/per ?day|PerDay|daily/i.test(last)) break; // дневной лимит этой модели — сразу к запасной
+      const rd = ((j.error && j.error.details) || []).find((d) => d.retryDelay);
+      const ms = rd ? Math.min(20000, parseFloat(rd.retryDelay) * 1000 + 500) : [2500, 6000, 0][attempt];
+      if (attempt < 2) { aiStatus(`Gemini в очереди — повторю через ${Math.round(ms / 1000)} с…`); await wait(ms); }
+    }
+  }
+  throw new Error(aiErr(last));
 }
 // счётчик запросов (только на этом устройстве)
 function aiCount() {
@@ -102,7 +125,17 @@ async function aiFood({ text, image }) {
 
 /* ---- окна ---- */
 function aiLoading(label) {
-  openSheet(() => `${sheetHead('✨ ИИ считает')}<div class="ai-wait"><div class="spinner"></div><div class="muted">${label}</div></div>`);
+  openSheet(() => `${sheetHead('✨ ИИ думает')}<div class="ai-wait"><div class="spinner"></div><div class="muted">${label}</div><div class="dim" id="aiStatus"></div></div>`);
+}
+// выбор файлов: поле добавляется в страницу — иначе iPhone после камеры иногда «теряет» фото
+function pickFiles(accept, multiple, cb) {
+  const old = document.getElementById('upbekFile'); if (old) old.remove();
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = accept; i.multiple = !!multiple; i.id = 'upbekFile';
+  i.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  i.addEventListener('change', () => { const fs = [...(i.files || [])]; i.remove(); if (fs.length) cb(fs); });
+  document.body.appendChild(i);
+  i.click();
 }
 async function runFoodAi(input) {
   const ctx = { link: UI.linkTx, day: UI.foodDay };
@@ -167,8 +200,8 @@ Object.assign(A, {
     if (key.length < 20) { toast('Вставь ключ целиком'); return; }
     el.disabled = true; el.textContent = 'Проверяю ключ…';
     try {
-      const model = await aiPickModel(key);
-      aiSaveCfg({ key, model });
+      const { model, alts } = await aiPickModel(key);
+      aiSaveCfg({ key, model, alts });
       closeSheet(); render(); toast(`✨ Gemini подключён (${esc(model)})`);
     } catch (e) { el.disabled = false; el.textContent = 'Подключить'; toast('⚠️ ' + esc(aiErr(e.message))); }
   },
@@ -176,12 +209,9 @@ Object.assign(A, {
   aiPhoto: () => {
     if (!aiReady()) { openAiSetup(); return; }
     const hint = ($('#foodText') && $('#foodText').value.trim()) || '';
-    const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*';
-    i.onchange = async () => {
-      const f = i.files && i.files[0]; if (!f) return;
-      try { const image = await imageToB64(f); runFoodAi({ image, text: hint }); } catch (e) { toast('⚠️ ' + esc(e.message)); }
-    };
-    i.click();
+    pickFiles('image/*', false, async (fs) => {
+      try { const image = await imageToB64(fs[0]); runFoodAi({ image, text: hint }); } catch (e) { toast('⚠️ ' + esc(e.message)); }
+    });
   },
   aiText: () => {
     if (!aiReady()) { openAiSetup(); return; }
@@ -417,9 +447,7 @@ Object.assign(A, {
   stmt: openStmt,
   stAcc: (el) => { UI.stAcc = el.dataset.v; refreshSheet(); },
   stPick: () => {
-    const i = document.createElement('input'); i.type = 'file'; i.multiple = true; i.accept = 'application/pdf,image/*';
-    i.onchange = () => { const fs = [...(i.files || [])]; if (fs.length) runStmt(fs); };
-    i.click();
+    pickFiles('application/pdf,image/*', true, (fs) => runStmt(fs));
   },
   stToggle: (el) => { const x = UI.stRows[+el.dataset.v]; x.on = !x.on; refreshSheet(); },
   stSave: () => {
@@ -445,3 +473,10 @@ Object.assign(A, {
 // разбор недели — сам, в понедельник (или при первом запуске на неделе)
 setTimeout(() => coachRun(false), 2500);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(() => coachRun(false), 1500); });
+
+// у тех, кто подключил ИИ раньше, ещё нет запасных моделей — дозаписываем тихо
+(function fillAlts() {
+  const c = aiCfg();
+  if (!c.key || c.alts) return;
+  aiPickModel(c.key).then(({ alts }) => { const n = aiCfg(); if (n.key === c.key) aiSaveCfg({ ...n, alts }); }).catch(() => {});
+})();

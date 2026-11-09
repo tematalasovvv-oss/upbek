@@ -172,3 +172,15 @@ input.bad { border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(255,
 .coach-score small { font-size: 11px; color: var(--muted); font-weight: 600; margin-top: -8px; }
 .coach-list { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.5; }
 .coach-list li { margin-bottom: 6px; }
+
+/* ---------- v2.4: голос ---------- */
+.voicebtn { border-color: rgba(246, 196, 83, .55); background: linear-gradient(135deg, rgba(246, 196, 83, .14), rgba(139, 108, 255, .1)), var(--card); }
+.voice-wrap { display: grid; place-items: center; gap: 10px; padding: 8px 0 4px; }
+.mic { width: 96px; height: 96px; border-radius: 50%; font-size: 40px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #f0b43c, var(--gold2)); color: #2a1d00; box-shadow: 0 10px 30px rgba(246, 196, 83, .35); }
+.mic.on { background: var(--red); color: #fff; font-size: 30px; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 122, .55); } 50% { box-shadow: 0 0 0 18px rgba(255, 107, 122, 0); } }
+textarea { resize: none; }
+.heard { font-style: italic; color: var(--muted); background: var(--card); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+.vh { font-size: 15px; margin: 14px 0 6px; }
+[data-theme="comic"] .mic { border: 3px solid #000; box-shadow: 5px 5px 0 #000, 5px 5px 0 3px var(--pink); }
