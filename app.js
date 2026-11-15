@@ -739,6 +739,7 @@ function foodEntry(f, qty) {
 
 /* ---------- Казна ---------- */
 const isDebt = (t) => t.cat === 'people' || t.cat === 'debt_in';
+const isLoan = (t) => t.cat === 'loan_in' || t.cat === 'debt';
 function debtsSummary() {
   const m = {};
   S.tx.forEach((t) => {
@@ -757,6 +758,24 @@ function debtCard() {
   <div class="card list">${list.slice(0, 12).map((r) => { const rest = r.gave - r.back; const st = rest > 0.5 ? `<b class="gold num">должен ${fmt(rest)}</b>` : rest < -0.5 ? `<b class="green num">+${fmt(-rest)}</b>` : '<b class="green">✓ закрыт</b>'; return `<div class="item"><span class="ii">🤝</span><span class="grow"><div class="it">${esc(r.name)}</div><div class="is">дал ${fmt(r.gave)} · вернули ${fmt(r.back)}</div></span>${st}</div>`; }).join('')}</div>
   <div class="note">«Дал в долг» и «вернули долг» гасят друг друга и не считаются тратами и доходами месяца. Имя пишется в заметке — так долги собираются по людям.</div>`;
 }
+function loansSummary() {
+  const m = {};
+  S.tx.forEach((t) => {
+    if (!isLoan(t)) return;
+    const name = (t.note || '').trim() || 'Кредит'; const k = norm(name);
+    const r = m[k] || (m[k] = { name, took: 0, paid: 0, last: 0 });
+    if (t.cat === 'loan_in') r.took += t.amount; else r.paid += t.amount;
+    r.last = Math.max(r.last, t.t);
+  });
+  return Object.values(m).sort((a, b) => (b.took - b.paid) - (a.took - a.paid) || b.last - a.last);
+}
+function loanCard() {
+  const list = loansSummary(); if (!list.length) return '';
+  const left = sum(list, (r) => Math.max(0, r.took - r.paid));
+  return `<h2>🏦 Кредиты <small>${left ? 'осталось ' + som(left) : 'всё погашено ✓'}</small></h2>
+  <div class="card list">${list.slice(0, 10).map((r) => { const rest = r.took - r.paid; const pct = r.took ? Math.min(100, Math.round((r.paid / r.took) * 100)) : 100; const st = rest > 0.5 ? `<b class="gold num">осталось ${fmt(rest)}</b>` : rest < -0.5 ? `<b class="red num">переплата ${fmt(-rest)}</b>` : '<b class="green">✓ погашен</b>'; return `<div class="item"><span class="ii">🏦</span><span class="grow"><div class="it">${esc(r.name)}</div><div class="is">взял ${fmt(r.took)} · погасил ${fmt(r.paid)} · ${pct}%</div>${r.took ? bar(r.paid, r.took, 'green') : ''}</span>${st}</div>`; }).join('')}</div>
+  <div class="note">Взятый кредит — это не доход, поэтому он не попадает в «Пришло» за месяц. Платежи по кредиту видны в расходах. «Переплата» — это проценты банку. Название кредита пишется в заметке — так платежи собираются в один кредит.</div>`;
+}
 function renderMoney() {
   const g = game(), bal = g.bal;
   const now = new Date();
@@ -764,7 +783,7 @@ function renderMoney() {
   const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 1);
   const fAcc = UI.mAcc || null;
   const monthTx = S.tx.filter((t) => t.t >= ms.getTime() && t.t < me.getTime() && (!fAcc || t.acc === fAcc || t.to === fAcc));
-  const inc = sum(monthTx.filter((t) => t.type === 'inc' && !t.rec && !isDebt(t)), (t) => t.amount);
+  const inc = sum(monthTx.filter((t) => t.type === 'inc' && !t.rec && !isDebt(t) && !isLoan(t)), (t) => t.amount);
   const exp = sum(monthTx.filter((t) => t.type === 'exp' && !isDebt(t)), (t) => t.amount);
   const byCat = {};
   monthTx.filter((t) => t.type === 'exp' && !isDebt(t)).forEach((t) => (byCat[t.cat] = (byCat[t.cat] || 0) + t.amount));
@@ -796,6 +815,7 @@ function renderMoney() {
 
   ${unsorted ? `<button class="alert" style="margin-top:14px" data-a="sortNext"><span style="font-size:22px">❓</span><span class="grow">Ждут категорию: <b>${unsorted}</b></span><span>Разобрать ›</span></button>` : ''}
 
+  ${loanCard()}
   ${debtCard()}
 
   <h2>Хронология</h2>
@@ -924,6 +944,11 @@ async function saveMoney() {
   if (!old) {
     if (tooFast()) return;
     const dup = S.tx.find((t) => !t.rec && t.type === tx.type && t.amount === tx.amount && t.cat === tx.cat && t.acc === tx.acc && Math.abs(t.t - tx.t) < 5 * 60000);
+    if (isLoan(tx) && !tx.note) {
+      const names = loansSummary().filter((r) => tx.cat === 'loan_in' || r.took > r.paid).map((r) => r.name).slice(0, 6);
+      const bankNames = S.accounts.map((a) => `Кредит ${a.name}`).filter((n) => !names.includes(n)).slice(0, 3);
+      tx.note = (await askText(tx.cat === 'loan_in' ? `🏦 Какой кредит взял на <b>${fmt(tx.amount)} сом</b>?` : `🏦 За какой кредит платёж <b>${fmt(tx.amount)} сом</b>?`, 'Например: Кредит Мбанк', [...names, ...bankNames])) || 'Кредит';
+    }
     if ((tx.cat === 'people' || tx.cat === 'debt_in') && !tx.note) {
       const names = debtsSummary().filter((r) => r.name !== 'Без имени' && (tx.cat === 'people' || r.gave > r.back)).map((r) => r.name).slice(0, 6);
       tx.note = await askText(tx.cat === 'people' ? `🤝 Кому даёшь в долг <b>${fmt(tx.amount)} сом</b>?` : `🤝 Кто вернул <b>${fmt(tx.amount)} сом</b>?`, 'Имя', names);
@@ -1064,7 +1089,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.7 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.8 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
