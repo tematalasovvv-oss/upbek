@@ -51,7 +51,7 @@ function wholeWord(s, w) {
 
 /* ---------- данные ---------- */
 function fresh() {
-  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
+  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], loans: [], bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
 }
 function load() {
   try { const raw = localStorage.getItem(STORE); if (raw) return Object.assign(fresh(), JSON.parse(raw)); } catch (e) { /* пусто */ }
@@ -467,6 +467,7 @@ function renderHero() {
   </div>
 
   ${promptCards()}
+  ${typeof loanPrompts === 'function' ? loanPrompts() : ''}
   ${typeof coachCard === 'function' ? coachCard() : ''}
 
   <div class="quick">
@@ -815,7 +816,8 @@ function renderMoney() {
 
   ${unsorted ? `<button class="alert" style="margin-top:14px" data-a="sortNext"><span style="font-size:22px">❓</span><span class="grow">Ждут категорию: <b>${unsorted}</b></span><span>Разобрать ›</span></button>` : ''}
 
-  ${loanCard()}
+  ${typeof loansSection === 'function' ? loansSection() : ''}
+  ${!(S.loans || []).length ? loanCard() : ''}
   ${debtCard()}
 
   <h2>Хронология</h2>
@@ -858,7 +860,7 @@ function openMoney(opts = {}) {
   const main = S.main || S.accounts[0].id;
   if (ed) {
     const diff = Math.round((new Date(dayKey()).getTime() - new Date(dayKey(ed.t)).getTime()) / DAY);
-    UI.money = { mode: ed.type, amount: String(ed.amount), acc: ed.acc, to: ed.to || null, cat: ed.cat, note: ed.note || '', day: diff === 0 ? 0 : diff === 1 ? 1 : null, editId: ed.id, t: ed.t };
+    UI.money = { mode: ed.type, amount: String(ed.amount), acc: ed.acc, to: ed.to || null, cat: ed.cat, note: ed.note || '', day: diff === 0 ? 0 : diff === 1 ? 1 : null, editId: ed.id, t: ed.t, loan: ed.loan || null };
   } else {
     UI.money = { mode: opts.mode || 'exp', amount: '0', acc: main, to: null, cat: null, note: '', day: 0 };
   }
@@ -937,6 +939,7 @@ async function saveMoney() {
   if (m.mode === 'tr' && (!m.to || m.to === m.acc)) { toast('Выбери другой счёт, куда переводишь'); return; }
   if (m.mode !== 'tr' && !m.cat) { toast('Выбери категорию'); return; }
   const tx = { id: m.editId || uid(), t: moneyTime(), type: m.mode, amount, acc: m.acc, cat: m.mode === 'tr' ? null : m.cat, note: m.note.trim() };
+  if (m.loan && m.mode === 'exp' && m.cat === 'debt') tx.loan = m.loan;
   if (m.mode === 'tr') tx.to = m.to;
   const old = m.editId ? S.tx.find((t) => t.id === m.editId) : null;
   if (old && old.rec) tx.rec = true;
@@ -944,7 +947,17 @@ async function saveMoney() {
   if (!old) {
     if (tooFast()) return;
     const dup = S.tx.find((t) => !t.rec && t.type === tx.type && t.amount === tx.amount && t.cat === tx.cat && t.acc === tx.acc && Math.abs(t.t - tx.t) < 5 * 60000);
-    if (isLoan(tx) && !tx.note) {
+    // «Погашение кредита»: спрашиваем, какой кредит или кредитку гасим
+    if (tx.type === 'exp' && tx.cat === 'debt' && !tx.loan && typeof pickLoanFor === 'function' && activeLoans().length) {
+      const id = await pickLoanFor(tx);
+      if (!id) return;
+      const L = loanById(id);
+      if (L.kind === 'card') {
+        if (L.acc === tx.acc) { toast('Выбери счёт, с которого гасишь кредитку'); return; }
+        Object.assign(tx, { type: 'tr', to: L.acc, cat: null, note: tx.note || 'Погашение кредитки' });
+      } else { tx.loan = L.id; tx.note = tx.note || L.name; }
+    }
+    if (isLoan(tx) && !tx.note && !tx.loan) {
       const names = loansSummary().filter((r) => tx.cat === 'loan_in' || r.took > r.paid).map((r) => r.name).slice(0, 6);
       const bankNames = S.accounts.map((a) => `Кредит ${a.name}`).filter((n) => !names.includes(n)).slice(0, 3);
       tx.note = (await askText(tx.cat === 'loan_in' ? `🏦 Какой кредит взял на <b>${fmt(tx.amount)} сом</b>?` : `🏦 За какой кредит платёж <b>${fmt(tx.amount)} сом</b>?`, 'Например: Кредит Мбанк', [...names, ...bankNames])) || 'Кредит';
@@ -1089,7 +1102,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.8 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.9 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
