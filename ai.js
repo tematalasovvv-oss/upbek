@@ -309,9 +309,14 @@ async function runStmt(files) {
   try {
     const parts = [{ text: stmtPrompt(acc) }];
     for (const f of files.slice(0, 12)) {
-      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) parts.push({ inline_data: { mime_type: 'application/pdf', data: await fileToB64(f) } });
-      else parts.push({ inline_data: { mime_type: 'image/jpeg', data: await imageToB64(f, 1600) } });
+      if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+        let t = '';
+        if (typeof pdfText === 'function') { try { aiStatus('Достаю текст из PDF…'); t = await pdfText(f); } catch (e) { t = ''; } }
+        if (t.replace(/\s/g, '').length > 80) parts.push({ text: 'Текст выписки:\n' + t.slice(0, 80000) });
+        else parts.push({ inline_data: { mime_type: 'application/pdf', data: await fileToB64(f) } });
+      } else parts.push({ inline_data: { mime_type: 'image/jpeg', data: await imageToB64(f, 1600) } });
     }
+    aiStatus('Gemini разбирает операции…');
     const r = await aiCall(parts, stmtSchema());
     const since = accSince(acc);
     const okCat = (type, c) => (type === 'inc' ? INC_CATS : EXP_CATS).some((x) => x[0] === c && !x[3]);

@@ -885,6 +885,7 @@ function renderMoneySheet() {
   ${m.mode === 'tr' ? `<div class="hint" style="margin-top:8px">↓ куда</div><div class="chips">${accChips('mTo', m.to)}</div>` : ''}
   ${UI.freq.length ? `<div class="chips" style="margin-top:8px"><span class="dim" style="align-self:center">⚡ Часто:</span>${UI.freq.map((f, i) => `<button class="chip" data-a="mFreq" data-v="${i}">${catOf(m.mode, f.cat).ic} ${fmt(f.amount)}</button>`).join('')}</div>` : ''}
   ${m.mode !== 'tr' ? `<div class="cats">${cats.map((c) => c === 'more' ? `<button class="cat more" data-a="mMore"><span class="ic">${UI.allCats ? '▴' : '⋯'}</span><span>${UI.allCats ? 'Свернуть' : 'Ещё'}</span></button>` : `<button class="cat ${m.cat === c[0] ? 'on' : ''}" data-a="mCat" data-v="${c[0]}"><span class="ic">${c[1]}</span><span>${c[2]}</span></button>`).join('')}</div>` : ''}
+  ${m.mode === 'exp' && m.cat === 'debt' && typeof activeLoans === 'function' && activeLoans().length ? `<div class="hint" style="text-align:left;margin:-2px 0 4px">Какой кредит гасишь?</div><div class="chips" style="margin-bottom:8px">${activeLoans().map((L) => `<button class="chip ${m.loan === L.id ? 'on' : ''}" data-a="mLoan" data-v="${L.id}">${L.kind === 'card' ? '💳' : '🏦'} ${esc(L.name)}</button>`).join('')}</div>` : ''}
   <div class="row" style="margin-top:${m.mode === 'tr' ? 12 : 0}px">
     <div class="seg" style="flex:none"><button class="${m.day === 0 ? 'on' : ''}" data-a="mDay" data-v="0">Сегодня</button><button class="${m.day === 1 ? 'on' : ''}" data-a="mDay" data-v="1">Вчера</button></div>
     <label class="chip datebtn ${m.day == null ? 'on' : ''}">📅${m.day == null && m.t ? ' ' + new Date(m.t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}<input type="date" id="mDate" max="${dayKey()}" value="${dayKey(moneyTime())}"></label>
@@ -939,7 +940,13 @@ async function saveMoney() {
   if (m.mode === 'tr' && (!m.to || m.to === m.acc)) { toast('Выбери другой счёт, куда переводишь'); return; }
   if (m.mode !== 'tr' && !m.cat) { toast('Выбери категорию'); return; }
   const tx = { id: m.editId || uid(), t: moneyTime(), type: m.mode, amount, acc: m.acc, cat: m.mode === 'tr' ? null : m.cat, note: m.note.trim() };
-  if (m.loan && m.mode === 'exp' && m.cat === 'debt') tx.loan = m.loan;
+  if (m.loan && m.mode === 'exp' && m.cat === 'debt') {
+    const L = typeof loanById === 'function' ? loanById(m.loan) : null;
+    if (L && L.kind === 'card') {
+      if (L.acc === tx.acc) { toast('Выбери счёт, с которого гасишь кредитку'); return; }
+      Object.assign(tx, { type: 'tr', to: L.acc, cat: null, note: tx.note || 'Погашение кредитки' });
+    } else if (L) { tx.loan = L.id; if (!tx.note) tx.note = L.name; }
+  }
   if (m.mode === 'tr') tx.to = m.to;
   const old = m.editId ? S.tx.find((t) => t.id === m.editId) : null;
   if (old && old.rec) tx.rec = true;
@@ -1102,7 +1109,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.9 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.10 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
@@ -1205,6 +1212,7 @@ const A = {
   mSave: saveMoney,
   mMonth: (el) => { UI.mOff = Math.min(0, (UI.mOff || 0) + +el.dataset.v); render(); },
   mFilter: (el) => { UI.mAcc = el.dataset.v || null; render(); },
+  mLoan: (el) => { UI.money.loan = UI.money.loan === el.dataset.v ? null : el.dataset.v; refreshSheet(); },
   mMore: () => { UI.allCats = !UI.allCats; refreshSheet(); },
   mFreq: (el) => { const f = UI.freq[+el.dataset.v]; if (!f) return; const m = UI.money; m.cat = f.cat; m.amount = String(f.amount); if (accById(f.acc)) m.acc = f.acc; saveMoney(); },
   mDel: () => { const id = UI.money.editId; const old = S.tx.find((t) => t.id === id); closeSheet(); act(() => { S.tx = S.tx.filter((t) => t.id !== id); }, 'Удалено', () => act(() => S.tx.push(old), 'Восстановлено')); },
