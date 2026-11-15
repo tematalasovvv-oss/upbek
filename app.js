@@ -772,12 +772,22 @@ async function pickDebtReturn(tx) {
   if (id === '__plain') plain(); else tx.note = open.find((r) => r.key === id).name;
   return true;
 }
+const monthStart = (t = Date.now()) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); };
+// прибыль по долгу: вернули больше, чем дал. Засчитывается доходом в месяце последнего возврата
+function debtProfits() {
+  return debtsSummary().filter((r) => r.back - r.gave > 0.5).map((r) => {
+    const last = S.tx.filter((t) => t.cat === 'debt_in' && debtKey(t) === r.key).sort((a, b) => b.t - a.t)[0];
+    return { name: r.name, amount: r.back - r.gave, t: last ? last.t : r.last, acc: last ? last.acc : null };
+  });
+}
 function debtCard() {
-  const list = debtsSummary(); if (!list.length) return '';
+  // открытые долги — всегда; закрытые и «в плюсе» — только до конца месяца, в котором их закрыли
+  const list = debtsSummary().filter((r) => r.gave - r.back > 0.5 || r.last >= monthStart());
+  if (!list.length) return '';
   const owed = sum(list, (r) => Math.max(0, r.gave - r.back));
   return `<h2>🤝 Долги <small>${owed ? 'тебе должны ' + som(owed) : 'все закрыты ✓'}</small></h2>
-  <div class="card list">${list.slice(0, 12).map((r) => { const rest = r.gave - r.back; const st = rest > 0.5 ? `<b class="gold num">должен ${fmt(rest)}</b>` : rest < -0.5 ? `<b class="green num">+${fmt(-rest)}</b>` : '<b class="green">✓ закрыт</b>'; return `<div class="item"><span class="ii">🤝</span><span class="grow"><div class="it">${esc(r.name)}</div><div class="is">дал ${fmt(r.gave)} · вернули ${fmt(r.back)}</div></span>${st}</div>`; }).join('')}</div>
-  <div class="note">«Дал в долг» и «вернули долг» гасят друг друга и не считаются тратами и доходами месяца. При возврате выбираешь, кто вернул; старые забытые долги записываются как обычный доход.</div>`;
+  <div class="card list">${list.slice(0, 12).map((r) => { const rest = r.gave - r.back; const st = rest > 0.5 ? `<b class="gold num">должен ${fmt(rest)}</b>` : rest < -0.5 ? `<b class="green num">+${fmt(-rest)} прибыль</b>` : '<b class="green">✓ закрыт</b>'; return `<div class="item"><span class="ii">🤝</span><span class="grow"><div class="it">${esc(r.name)}</div><div class="is">дал ${fmt(r.gave)} · вернули ${fmt(r.back)}</div></span>${st}</div>`; }).join('')}</div>
+  <div class="note">«Дал в долг» и «вернули долг» гасят друг друга и не считаются тратами и доходами. Если вернули больше — разница идёт в «Пришло» как прибыль. Закрытые долги исчезают отсюда с начала следующего месяца, но остаются в хронологии.</div>`;
 }
 function loansSummary() {
   const m = {};
@@ -804,7 +814,8 @@ function renderMoney() {
   const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 1);
   const fAcc = UI.mAcc || null;
   const monthTx = S.tx.filter((t) => t.t >= ms.getTime() && t.t < me.getTime() && (!fAcc || t.acc === fAcc || t.to === fAcc));
-  const inc = sum(monthTx.filter((t) => t.type === 'inc' && !t.rec && !isDebt(t) && !isLoan(t)), (t) => t.amount);
+  const profit = sum(debtProfits().filter((p) => p.t >= ms.getTime() && p.t < me.getTime() && (!fAcc || p.acc === fAcc)), (p) => p.amount);
+  const inc = sum(monthTx.filter((t) => t.type === 'inc' && !t.rec && !isDebt(t) && !isLoan(t)), (t) => t.amount) + profit;
   const exp = sum(monthTx.filter((t) => t.type === 'exp' && !isDebt(t)), (t) => t.amount);
   const byCat = {};
   monthTx.filter((t) => t.type === 'exp' && !isDebt(t)).forEach((t) => (byCat[t.cat] = (byCat[t.cat] || 0) + t.amount));
@@ -849,7 +860,7 @@ function renderMoney() {
   <div class="chips" style="margin-bottom:10px"><button class="chip ${!fAcc ? 'on' : ''}" data-a="mFilter" data-v="">Все счета</button>${S.accounts.map((a) => `<button class="chip ${fAcc === a.id ? 'on' : ''}" data-a="mFilter" data-v="${a.id}"><i class="dot" style="background:${a.color}"></i>${esc(a.name)}</button>`).join('')}</div>
   <div class="card">
     <div class="split" style="margin-top:0">
-      <div><span>Пришло</span><b class="green num">+${fmt(inc)}</b></div>
+      <div><span>Пришло${profit ? ` <span class="dim">(вкл. ${fmt(profit)} прибыль по долгам)</span>` : ''}</span><b class="green num">+${fmt(inc)}</b></div>
       <div><span>Ушло</span><b class="red num">−${fmt(exp)}</b></div>
     </div>
     ${cats.length ? `<div style="margin-top:14px">${cats.map(([id, v]) => { const c = catOf('exp', id); return `<div class="catbar"><div class="row"><span>${c.ic} ${c.n}</span><b class="num">${fmt(v)} · ${Math.round((v / (exp || 1)) * 100)}%</b></div>${bar(v, maxCat, 'gold')}</div>`; }).join('')}</div>` : ''}
@@ -1131,7 +1142,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.11 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.12 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
