@@ -62,7 +62,7 @@ function smartSchema() {
       }, required: ['amount', 'direction', 'category', 'description'] } },
       foods: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
         name: { type: 'STRING' }, emoji: { type: 'STRING' }, grams: { type: 'NUMBER' }, kcal: { type: 'NUMBER' },
-        protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' }, day: { type: 'STRING', enum: ['today', 'yesterday'] },
+        protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' }, water_ml: { type: 'NUMBER' }, day: { type: 'STRING', enum: ['today', 'yesterday'] },
       }, required: ['name', 'grams', 'kcal', 'protein', 'fat', 'carbs'] } },
       activities: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
         kind: { type: 'STRING', enum: ['walk', 'gym', 'steps'] }, minutes: { type: 'NUMBER' }, steps: { type: 'NUMBER' }, day: { type: 'STRING', enum: ['today', 'yesterday'] },
@@ -81,7 +81,7 @@ function smartPrompt(isAudio, text) {
 Извлеки:
 - transcript — что он сказал, дословно, по-русски;
 - transactions — траты (out) и доходы (in): amount в сомах; category — из списка; description — коротко, на что/где; bank — название счёта, только если он его назвал; day — today или yesterday («вчера»);
-- foods — всё, что он съел или выпил: короткое название по-русски, один эмодзи, вес порции в граммах и для этой порции kcal, protein, fat, carbs (реалистичные средние значения; учитывай местную кухню: бризоль, плов, лагман, манты, самса и т. п.);
+- foods — всё, что он съел или выпил: короткое название по-русски, один эмодзи, вес порции в граммах и для этой порции kcal, protein, fat, carbs (реалистичные средние значения; учитывай местную кухню: бризоль, плов, лагман, манты, самса и т. п.); water_ml — сколько воды организм получит (вода, чай, компот, молоко ≈ 90–100% объёма, кофе ≈ 85%, сладкие напитки ≈ 90%, супы ≈ 50%; алкоголь и твёрдая еда — 0). Если он пил просто воду — добавь её в foods как «Вода» с kcal 0 и water_ml = объём;
 - activities — прогулка (walk) или фитнес/тренировка (gym) в минутах, или шаги (steps).
 Если деньги потрачены на еду («потратил 500 и покушал бризоль») — это трата в категории еды (canteen — столовая, fastfood — фастфуд, bar — бар, иначе food) И отдельно блюдо в foods.
 Категории расходов: ${ex}.
@@ -152,7 +152,7 @@ Object.assign(A, {
     const eatTx = txs.find((x) => isEatCat(x.type, x.cat));
     const foods = v.food.filter((x) => x.on).map((x) => ({
       id: uid(), t: tOf(x), name: x.name, ic: x.emoji || '🍽️', unit: `~${Math.round(x.grams)} г`, qty: x.mult,
-      k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ai: true,
+      k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ...(x.water_ml > 0 ? { hyd: Math.round(x.water_ml) } : {}), ai: true,
       ...(eatTx && dayKey(eatTx.t) === dayKey(tOf(x)) ? { tx: eatTx.id } : {}),
     }));
     const acts = v.act.filter((x) => x.on).map((x) => {

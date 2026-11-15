@@ -95,7 +95,7 @@ const FOOD_SCHEMA = {
         type: 'OBJECT',
         properties: {
           name: { type: 'STRING' }, emoji: { type: 'STRING' }, grams: { type: 'NUMBER' },
-          kcal: { type: 'NUMBER' }, protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' },
+          kcal: { type: 'NUMBER' }, protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' }, water_ml: { type: 'NUMBER' },
         },
         required: ['name', 'grams', 'kcal', 'protein', 'fat', 'carbs'],
       },
@@ -109,6 +109,7 @@ function foodPrompt(hasImage, text) {
   return `Ты — нутрициолог. Пользователь живёт в Кыргызстане (частые блюда: плов, лагман, манты, самса, шорпо, бешбармак, куурдак, ашлямфу, лепёшка, боорсок, блюда столовых).
 Определи каждое отдельное блюдо или продукт${hasImage ? ' на фото' : ''}, оцени вес порции в граммах и посчитай для ЭТОЙ порции калории (kcal), белки (protein), жиры (fat) и углеводы (carbs) в граммах.
 Правила: названия короткие, по-русски; emoji — один подходящий эмодзи; числа — реалистичные средние значения для такой порции; каждое блюдо и напиток — отдельной строкой. Если на фото несколько одинаковых порций, перечисли их отдельно.
+water_ml — сколько воды организм получит из этой порции: чистая вода, чай, компот, молоко ≈ 90–100% объёма, кофе ≈ 85%, сладкие напитки ≈ 90%, супы ≈ 50% объёма; алкоголь, энергетики и твёрдая еда — 0.
 Если еды нет — верни пустой items и объясни в comment. В comment одной короткой фразой можно дать совет (цель пользователя: ${GOALS[p.goal] ? GOALS[p.goal].n.toLowerCase() : 'здоровое питание'}).${text ? `\nОписание от пользователя: «${text}»` : ''}`;
 }
 async function imageToB64(file, max = 800) {
@@ -163,7 +164,7 @@ function renderAiResult() {
   ${UI.linkTx ? '<div class="hint">Отметь только своё — остальное сними галочкой</div>' : ''}
   <div class="card list">${R.items.map((x, i) => `<div class="item aiitem ${x.on ? '' : 'off'}">
     <button class="ii" data-a="aiToggle" data-v="${i}">${x.on ? esc(x.emoji || '🍽️') : '✕'}</button>
-    <span class="grow"><div class="it">${esc(x.name)}</div><div class="is">~${Math.round(x.grams * x.mult)} г · Б ${Math.round(x.protein * x.mult)} · Ж ${Math.round(x.fat * x.mult)} · У ${Math.round(x.carbs * x.mult)}</div></span>
+    <span class="grow"><div class="it">${esc(x.name)}</div><div class="is">~${Math.round(x.grams * x.mult)} г · Б ${Math.round(x.protein * x.mult)} · Ж ${Math.round(x.fat * x.mult)} · У ${Math.round(x.carbs * x.mult)}${x.water_ml > 0 ? ` · 💧 ${Math.round(x.water_ml * x.mult)} мл` : ''}</div></span>
     <span class="mini-step"><button data-a="aiMult" data-v="${i}:-0.5">−</button><b>${x.mult === 1 ? '1' : round1(x.mult)}</b><button data-a="aiMult" data-v="${i}:0.5">＋</button></span>
     <b class="iv">${fmt(x.kcal * x.mult)}</b></div>`).join('')}</div>
   <div class="total" style="margin:6px 0 12px"><div class="tv num">${fmt(tot('kcal'))} ккал</div><div class="tl">Б ${Math.round(tot('protein'))} г · Ж ${Math.round(tot('fat'))} г · У ${Math.round(tot('carbs'))} г</div></div>
@@ -239,7 +240,7 @@ Object.assign(A, {
     const t = viewDayTime();
     const entries = R.items.filter((x) => x.on).map((x) => ({
       id: uid(), t, name: x.name, ic: x.emoji || '🍽️', unit: `~${Math.round(x.grams)} г`, qty: x.mult,
-      k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ai: true, ...(ctx.link ? { tx: ctx.link } : {}),
+      k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ...(x.water_ml > 0 ? { hyd: Math.round(x.water_ml) } : {}), ai: true, ...(ctx.link ? { tx: ctx.link } : {}),
     }));
     const ids = entries.map((e) => e.id);
     closeSheet();

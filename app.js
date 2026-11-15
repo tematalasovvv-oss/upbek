@@ -102,7 +102,9 @@ function dayStats(d) {
     actK: sum(d.act, (a) => a.kcal),
     mins: sum(sport, (a) => a.min),
     steps: sum(d.act, (a) => a.steps),
-    water: sum(d.wa || [], (w) => w.ml),
+    waterPure: sum(d.wa || [], (w) => w.ml),
+    waterFood: sum(d.food, (e) => (e.hyd || 0) * e.qty),
+    water: sum(d.wa || [], (w) => w.ml) + sum(d.food, (e) => (e.hyd || 0) * e.qty),
   };
 }
 function questsOf(d) {
@@ -536,7 +538,7 @@ function renderBody() {
 
   <h2>Съедено <small>${fmt(sum(food, foodKcal))} ккал · ${Math.round(sum(food, foodProt))} г белка</small></h2>
   <div class="card list">
-    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${e.ic || '🍽️'}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
+    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${e.ic || '🍽️'}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.hyd ? ` · 💧 ${fmt(e.hyd * e.qty)} мл` : ''}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
   </div>
 
   <h2>Активность <small>${fmt(sum(acts, (a) => a.kcal))} ккал</small></h2>
@@ -603,9 +605,11 @@ function renderFoodSheet() {
     return `${head}
     <div class="total" style="margin-bottom:8px"><div class="tv num">💧 ${fmt(st.water)} <small style="font-size:16px" class="muted">/ ${fmt(need)} мл</small></div></div>
     ${bar(st.water, need, 'blue')}
+    <div class="split"><div><span>💧 Чистая вода</span><b class="num">${fmt(st.waterPure)} мл</b></div><div><span>☕ Напитки и супы</span><b class="num">${fmt(st.waterFood)} мл</b></div></div>
     <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:14px">${[[250, '🥛', 'стакан'], [330, '🥤', '0,33 л'], [500, '🍶', '0,5 л'], [1000, '💧', '1 литр']].map(([ml, ic, l]) => `<button class="tile" data-a="waterAdd" data-v="${ml}"><span class="ic">${ic}</span><span class="tn">+${ml}</span><span class="tk">${l}</span></button>`).join('')}</div>
     ${d.wa.length ? `<div class="card list" style="margin-top:12px">${[...d.wa].sort((a, b) => b.t - a.t).map((w) => `<div class="item"><span class="ii">💧</span><span class="grow"><div class="it">${fmt(w.ml)} мл</div><div class="is">${hhmm(w.t)}</div></span><button class="btn ghost sm" data-a="waterDel" data-v="${w.id}">✕</button></div>`).join('')}</div>` : ''}
-    <div class="note">Норма ≈ 33 мл на кг веса + 0,5 л на час спорта. Чай и компот тоже можно добавлять сюда.</div>`;
+    ${d.food.some((e) => e.hyd) ? `<div class="hint" style="text-align:left;margin-top:12px">Из напитков и супов</div><div class="card list">${d.food.filter((e) => e.hyd).sort((a, b) => b.t - a.t).map((e) => `<div class="item"><span class="ii">${e.ic || '☕'}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${hhmm(e.t)}</div></span><b class="iv">+${fmt(e.hyd * e.qty)} мл</b></div>`).join('')}</div>` : ''}
+    <div class="note">Норма ≈ 33 мл на кг веса + 0,5 л на час спорта. Чай, кофе, компот, молоко и супы засчитываются сами (кофе ~85%, суп ~50% объёма). Лучше всего — чистая вода; сладкие напитки дают и воду, и лишний сахар.</div>`;
   }
   if (UI.fs === 'steps') {
     return `${head}<p class="muted" style="margin-top:0">Сколько шагов за день? Цифра есть в приложении «Здоровье» на iPhone.</p>
@@ -728,7 +732,7 @@ function updateFoodPreview() {
   $('#foodTiles').innerHTML = tilesHtml(last.length >= 2 ? last : '');
 }
 function foodEntry(f, qty) {
-  const e = { id: uid(), t: viewDayTime(), fid: f.id, name: f.n, ic: f.ic, unit: f.u, qty, k: f.k, p: f.p, f: f.f || 0, c: f.c || 0 };
+  const e = { id: uid(), t: viewDayTime(), fid: f.id, name: f.n, ic: f.ic, unit: f.u, qty, k: f.k, p: f.p, f: f.f || 0, c: f.c || 0, ...(f.hyd ? { hyd: f.hyd } : {}) };
   if (UI.linkTx) e.tx = UI.linkTx;
   return e;
 }
@@ -991,6 +995,7 @@ function openEditFood(id) {
   <div class="dim" style="text-align:center">${fmt(e.k)} ккал · Б ${round1(e.p)} · Ж ${round1(e.f || 0)} · У ${round1(e.c || 0)} — за ${esc(e.unit || 'порцию')}</div>
   <div class="stepper"><button data-a="fqty" data-v="-0.5">−</button><b class="num">${round1(e.qty)}</b><button data-a="fqty" data-v="0.5">＋</button></div>
   <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">Б ${Math.round(foodProt(e))} г · Ж ${Math.round((e.f || 0) * e.qty)} г · У ${Math.round((e.c || 0) * e.qty)} г</div></div>
+  ${e.hyd ? `<div class="note" style="margin:-4px 0 12px">💧 В водный баланс: +${fmt(e.hyd * e.qty)} мл</div>` : ''}
   <div class="field"><label>📅 Дата — если записал не в тот день</label><input type="date" id="feDate" max="${dayKey()}" value="${dayKey(e.t)}"></div>
   <button class="btn" data-a="close">Готово</button>
   <button class="btn danger" style="margin-top:8px" data-a="fdel">Удалить</button>`);
@@ -1059,7 +1064,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.6 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.7 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
