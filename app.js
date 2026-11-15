@@ -739,25 +739,45 @@ function foodEntry(f, qty) {
 }
 
 /* ---------- Казна ---------- */
-const isDebt = (t) => t.cat === 'people' || t.cat === 'debt_in';
+// долг: «Людям в долг» всегда; «Вернули долг» — только если есть кому возвращать (иначе это обычный доход)
+const debtKey = (t) => norm((t.note || '').trim() || 'Без имени');
+const lentKeys = () => new Set(S.tx.filter((t) => t.cat === 'people').map(debtKey));
+const isDebt = (t) => t.cat === 'people' || (t.cat === 'debt_in' && lentKeys().has(debtKey(t)));
 const isLoan = (t) => t.cat === 'loan_in' || t.cat === 'debt';
 function debtsSummary() {
   const m = {};
   S.tx.forEach((t) => {
-    if (!isDebt(t)) return;
-    const name = (t.note || '').trim() || 'Без имени'; const k = norm(name);
-    const r = m[k] || (m[k] = { name, gave: 0, back: 0, last: 0 });
-    if (t.cat === 'people') r.gave += t.amount; else r.back += t.amount;
-    r.last = Math.max(r.last, t.t);
+    if (t.cat !== 'people') return;
+    const name = (t.note || '').trim() || 'Без имени'; const k = debtKey(t);
+    const r = m[k] || (m[k] = { key: k, name, gave: 0, back: 0, last: 0 });
+    r.gave += t.amount; r.last = Math.max(r.last, t.t);
+  });
+  S.tx.forEach((t) => {
+    if (t.cat !== 'debt_in') return;
+    const r = m[debtKey(t)]; if (!r) return; // возврат без выданного долга — не в долгах
+    r.back += t.amount; r.last = Math.max(r.last, t.t);
   });
   return Object.values(m).sort((a, b) => (b.gave - b.back) - (a.gave - a.back) || b.last - a.last);
+}
+// «Вернули долг»: выбираем, чей долг. Нечего выбрать или старый долг — обычный доход
+async function pickDebtReturn(tx) {
+  const open = debtsSummary().filter((r) => r.gave - r.back > 0.5);
+  const plain = () => { tx.cat = 'other_in'; tx.note = tx.note || 'Возврат старого долга'; };
+  if (!open.length) { plain(); setTimeout(() => toast('🤝 Открытых долгов нет — записал как обычный доход'), 1800); return true; }
+  const id = await askPick(`🤝 Кто вернул <b>${fmt(tx.amount)} сом</b>?`, [
+    ...open.map((r) => ({ id: r.key, ic: '🤝', label: r.name, sub: `должен ${fmt(r.gave - r.back)} из ${fmt(r.gave)}` })),
+    { id: '__plain', ic: '💰', label: 'Старый или другой долг', sub: 'запишу как обычный доход' },
+  ]);
+  if (id === null) return false;
+  if (id === '__plain') plain(); else tx.note = open.find((r) => r.key === id).name;
+  return true;
 }
 function debtCard() {
   const list = debtsSummary(); if (!list.length) return '';
   const owed = sum(list, (r) => Math.max(0, r.gave - r.back));
   return `<h2>🤝 Долги <small>${owed ? 'тебе должны ' + som(owed) : 'все закрыты ✓'}</small></h2>
   <div class="card list">${list.slice(0, 12).map((r) => { const rest = r.gave - r.back; const st = rest > 0.5 ? `<b class="gold num">должен ${fmt(rest)}</b>` : rest < -0.5 ? `<b class="green num">+${fmt(-rest)}</b>` : '<b class="green">✓ закрыт</b>'; return `<div class="item"><span class="ii">🤝</span><span class="grow"><div class="it">${esc(r.name)}</div><div class="is">дал ${fmt(r.gave)} · вернули ${fmt(r.back)}</div></span>${st}</div>`; }).join('')}</div>
-  <div class="note">«Дал в долг» и «вернули долг» гасят друг друга и не считаются тратами и доходами месяца. Имя пишется в заметке — так долги собираются по людям.</div>`;
+  <div class="note">«Дал в долг» и «вернули долг» гасят друг друга и не считаются тратами и доходами месяца. При возврате выбираешь, кто вернул; старые забытые долги записываются как обычный доход.</div>`;
 }
 function loansSummary() {
   const m = {};
@@ -886,6 +906,7 @@ function renderMoneySheet() {
   ${UI.freq.length ? `<div class="chips" style="margin-top:8px"><span class="dim" style="align-self:center">⚡ Часто:</span>${UI.freq.map((f, i) => `<button class="chip" data-a="mFreq" data-v="${i}">${catOf(m.mode, f.cat).ic} ${fmt(f.amount)}</button>`).join('')}</div>` : ''}
   ${m.mode !== 'tr' ? `<div class="cats">${cats.map((c) => c === 'more' ? `<button class="cat more" data-a="mMore"><span class="ic">${UI.allCats ? '▴' : '⋯'}</span><span>${UI.allCats ? 'Свернуть' : 'Ещё'}</span></button>` : `<button class="cat ${m.cat === c[0] ? 'on' : ''}" data-a="mCat" data-v="${c[0]}"><span class="ic">${c[1]}</span><span>${c[2]}</span></button>`).join('')}</div>` : ''}
   ${m.mode === 'exp' && m.cat === 'debt' && typeof activeLoans === 'function' && activeLoans().length ? `<div class="hint" style="text-align:left;margin:-2px 0 4px">Какой кредит гасишь?</div><div class="chips" style="margin-bottom:8px">${activeLoans().map((L) => `<button class="chip ${m.loan === L.id ? 'on' : ''}" data-a="mLoan" data-v="${L.id}">${L.kind === 'card' ? '💳' : '🏦'} ${esc(L.name)}</button>`).join('')}</div>` : ''}
+  ${m.mode === 'inc' && m.cat === 'debt_in' && m.editId ? `<div class="hint" style="text-align:left;margin:-2px 0 4px">Кто вернул?</div><div class="chips" style="margin-bottom:8px">${debtsSummary().map((r) => `<button class="chip ${norm(m.note) === r.key ? 'on' : ''}" data-a="mDebt" data-v="${esc(r.name)}">🤝 ${esc(r.name)}</button>`).join('')}<button class="chip" data-a="mDebtPlain">💰 Обычный доход</button></div>` : ''}
   <div class="row" style="margin-top:${m.mode === 'tr' ? 12 : 0}px">
     <div class="seg" style="flex:none"><button class="${m.day === 0 ? 'on' : ''}" data-a="mDay" data-v="0">Сегодня</button><button class="${m.day === 1 ? 'on' : ''}" data-a="mDay" data-v="1">Вчера</button></div>
     <label class="chip datebtn ${m.day == null ? 'on' : ''}">📅${m.day == null && m.t ? ' ' + new Date(m.t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}<input type="date" id="mDate" max="${dayKey()}" value="${dayKey(moneyTime())}"></label>
@@ -969,10 +990,11 @@ async function saveMoney() {
       const bankNames = S.accounts.map((a) => `Кредит ${a.name}`).filter((n) => !names.includes(n)).slice(0, 3);
       tx.note = (await askText(tx.cat === 'loan_in' ? `🏦 Какой кредит взял на <b>${fmt(tx.amount)} сом</b>?` : `🏦 За какой кредит платёж <b>${fmt(tx.amount)} сом</b>?`, 'Например: Кредит Мбанк', [...names, ...bankNames])) || 'Кредит';
     }
-    if ((tx.cat === 'people' || tx.cat === 'debt_in') && !tx.note) {
-      const names = debtsSummary().filter((r) => r.name !== 'Без имени' && (tx.cat === 'people' || r.gave > r.back)).map((r) => r.name).slice(0, 6);
-      tx.note = await askText(tx.cat === 'people' ? `🤝 Кому даёшь в долг <b>${fmt(tx.amount)} сом</b>?` : `🤝 Кто вернул <b>${fmt(tx.amount)} сом</b>?`, 'Имя', names);
+    if (tx.cat === 'people' && !tx.note) {
+      const names = debtsSummary().filter((r) => r.name !== 'Без имени').map((r) => r.name).slice(0, 6);
+      tx.note = await askText(`🤝 Кому даёшь в долг <b>${fmt(tx.amount)} сом</b>?`, 'Имя', names);
     }
+    if (tx.cat === 'debt_in' && !lentKeys().has(debtKey(tx)) && !(await pickDebtReturn(tx))) return;
     if (dup && !(await ask(`Такая же запись уже есть: <b>${tx.type === 'inc' ? '+' : '−'}${fmt(tx.amount)} · ${tx.type === 'tr' ? 'перевод' : catOf(tx.type, tx.cat).n}</b> в ${hhmm(dup.t)}.<br>Записать ещё раз?`, 'Да, ещё раз', 'Нет'))) return;
   }
   closeSheet();
@@ -1109,7 +1131,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.10 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.11 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
@@ -1212,6 +1234,8 @@ const A = {
   mSave: saveMoney,
   mMonth: (el) => { UI.mOff = Math.min(0, (UI.mOff || 0) + +el.dataset.v); render(); },
   mFilter: (el) => { UI.mAcc = el.dataset.v || null; render(); },
+  mDebt: (el) => { UI.money.note = el.dataset.v; refreshSheet(); },
+  mDebtPlain: () => { UI.money.cat = 'other_in'; if (!UI.money.note) UI.money.note = 'Возврат старого долга'; refreshSheet(); },
   mLoan: (el) => { UI.money.loan = UI.money.loan === el.dataset.v ? null : el.dataset.v; refreshSheet(); },
   mMore: () => { UI.allCats = !UI.allCats; refreshSheet(); },
   mFreq: (el) => { const f = UI.freq[+el.dataset.v]; if (!f) return; const m = UI.money; m.cat = f.cat; m.amount = String(f.amount); if (accById(f.acc)) m.acc = f.acc; saveMoney(); },
