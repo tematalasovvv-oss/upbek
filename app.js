@@ -51,7 +51,7 @@ function wholeWord(s, w) {
 
 /* ---------- данные ---------- */
 function fresh() {
-  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
+  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
 }
 function load() {
   try { const raw = localStorage.getItem(STORE); if (raw) return Object.assign(fresh(), JSON.parse(raw)); } catch (e) { /* пусто */ }
@@ -82,9 +82,12 @@ function targets(p = S.profile) {
   const protein = +p.proteinOverride || Math.round(p.weight * g.prot);
   const fat = Math.round(p.weight * 1.0);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { bmr: Math.round(bmr), base: Math.round(base), kcal, protein, fat, carbs };
+  const water = Math.round((p.weight * 33) / 50) * 50;
+  return { bmr: Math.round(bmr), base: Math.round(base), kcal, protein, fat, carbs, water };
 }
 const foodKcal = (e) => e.k * e.qty;
+const waterNeed = (st) => targets().water + Math.round(((st && st.mins) || 0) * 8 / 50) * 50;
+function withDate(t, ymd) { const d = new Date(t || Date.now()); const [y, m, dd] = ymd.split('-').map(Number); d.setFullYear(y, m - 1, dd); return d.getTime(); }
 const foodProt = (e) => e.p * e.qty;
 const allFoods = () => [...S.customFoods, ...FOODS];
 const foodById = (id) => allFoods().find((f) => f.id === id);
@@ -99,6 +102,7 @@ function dayStats(d) {
     actK: sum(d.act, (a) => a.kcal),
     mins: sum(sport, (a) => a.min),
     steps: sum(d.act, (a) => a.steps),
+    water: sum(d.wa || [], (w) => w.ml),
   };
 }
 function questsOf(d) {
@@ -112,6 +116,7 @@ function questsOf(d) {
     { id: 'move', ic: '🏋️', t: 'Тренировка дня', d: st.mins || st.steps ? `${st.mins} мин · ${fmt(st.steps)} шагов` : '20+ минут прогулки/фитнеса или 6000 шагов', xp: 30, done: st.mins >= 20 || st.steps >= 6000 },
     { id: 'sleep', ic: '😴', t: 'Выспись', d: d.sl.length ? `Сон ${fmtH(sleepH(d.sl[0]))} · нужно 7–10 ч` : 'Запиши сон: 7–10 часов', xp: 25, done: d.sl.length > 0 && sleepH(d.sl[0]) >= 7 && sleepH(d.sl[0]) <= 10 },
     { id: 'log', ic: '📒', t: 'Летописец', d: `Записано приёмов пищи: ${Math.min(d.food.length, 3)} / 3`, xp: 15, done: d.food.length >= 3 },
+    { id: 'water', ic: '💧', t: 'Водный баланс', d: `${fmt(st.water)} / ${fmt(waterNeed(st))} мл`, xp: 15, done: st.water >= waterNeed(st) },
     { id: 'gold', ic: '💰', t: 'Казначей', d: d.tx.length ? `Записей в казне: ${d.tx.length}` : 'Запиши трату или сверь баланс', xp: 20, done: d.tx.length > 0 },
   ];
 }
@@ -144,7 +149,7 @@ function levelFromXp(xp) {
   return { L, cur: xp - acc, need };
 }
 function rankOf(L) { let r = RANKS[0]; for (const x of RANKS) if (L >= x[0]) r = x; return { n: r[1], ic: r[2] }; }
-const emptyDay = () => ({ food: [], act: [], tx: [], w: [], sl: [] });
+const emptyDay = () => ({ food: [], act: [], tx: [], w: [], sl: [], wa: [] });
 function buckets() {
   const b = {};
   const get = (k) => b[k] || (b[k] = emptyDay());
@@ -152,6 +157,7 @@ function buckets() {
   S.act.forEach((e) => get(dayKey(e.t)).act.push(e));
   S.tx.forEach((e) => { if (!e.hist) get(dayKey(e.t)).tx.push(e); });
   S.weights.forEach((e) => get(dayKey(e.t)).w.push(e));
+  (S.water || []).forEach((e) => get(dayKey(e.t)).wa.push(e));
   S.sleep.forEach((e) => get(dayKey(e.wake)).sl.push(e));
   return b;
 }
@@ -279,6 +285,19 @@ function ask(html, yes = 'Да', no = 'Нет') {
     document.body.appendChild(el);
   });
 }
+function askText(html, placeholder, chips = []) {
+  return new Promise((res) => {
+    const el = document.createElement('div'); el.className = 'askbox';
+    el.innerHTML = `<div class="askcard"><div class="asktext">${html}</div>${chips.length ? `<div class="chips wrap" style="margin-bottom:10px">${chips.map((c) => `<button class="chip" data-n="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}<input id="askIn" placeholder="${esc(placeholder)}" autocomplete="off"><div class="row" style="margin-top:12px"><button class="btn ghost" data-r="0">Без имени</button><button class="btn gold" data-r="1">Готово</button></div></div>`;
+    const inp = () => el.querySelector('#askIn');
+    el.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-n]'); if (c) { inp().value = c.dataset.n; return; }
+      const b = e.target.closest('[data-r]'); if (!b) return;
+      const v = b.dataset.r === '1' ? inp().value.trim() : ''; el.remove(); res(v);
+    });
+    document.body.appendChild(el); setTimeout(() => inp().focus(), 60);
+  });
+}
 let lastAddAt = 0;
 function tooFast() {
   const now = Date.now();
@@ -341,6 +360,7 @@ function todayCard(d) {
     <div class="grow">
       <div class="mini"><div class="row"><span>🥩 Белок</span><b class="num">${Math.round(st.prot)} / ${t.protein} г</b></div>${bar(st.prot, t.protein, 'red')}
         <div class="macros"><span>Жиры <b class="num">${Math.round(st.fat)}</b>/${t.fat}</span><span>Углеводы <b class="num">${Math.round(st.carb)}</b>/${t.carbs}</span></div></div>
+      <div class="mini"><div class="row"><span>💧 Вода</span><b class="num">${fmt(st.water)} / ${fmt(waterNeed(st))} мл</b></div>${bar(st.water, waterNeed(st), 'blue')}</div>
       <div class="mini"><div class="row"><span>🔥 Потрачено</span><b class="num">${fmt(spent)} ккал</b></div>${bar(st.actK, 600, 'blue')}<div class="dim" style="margin-top:3px">организм ${fmt(t.base)} + спорт ${fmt(st.actK)}</div></div>
       <div class="mini" style="margin:0"><div class="row"><span>⚖️ Баланс</span><b class="num ${balCls}">${balance > 0 ? '+' : ''}${fmt(balance)} ккал</b></div></div>
     </div>
@@ -433,7 +453,8 @@ function renderHero() {
     </div>
     <div class="attrs">
       ${attr('❤️', 'Сытость', hp, 'red', `${fmt(st.eaten)} / ${fmt(need)} ккал`)}
-      ${attr('⚡', 'Энергия', energyOf(sl), 'blue', sh == null ? 'запиши сон' : 'сон ' + fmtH(sh))}
+      ${attr('⚡', 'Энергия', energyOf(sl), 'gold', sh == null ? 'запиши сон' : 'сон ' + fmtH(sh))}
+      ${attr('💧', 'Вода', Math.round((st.water / waterNeed(st)) * 100), 'blue', `${fmt(st.water)} / ${fmt(waterNeed(st))} мл · нажми +`).replace('<div class="attr">', '<div class="attr tap" data-a="foodSheet" data-v="water">')}
       ${attr('💪', 'Форма', form, 'green', `${weekMins} / 150 мин за 7 дней`)}
     </div>
     <div class="char-foot">
@@ -479,7 +500,7 @@ function sortedFoods() {
   return allFoods().map((f, i) => ({ f, i, u: S.usage[f.id] || 0 })).sort((a, b) => b.u - a.u || a.i - b.i).map((x) => x.f);
 }
 function tileHtml(f) {
-  return `<button class="tile" data-a="addFood" data-v="${f.id}"><span class="ic">${f.ic}</span><span class="tn">${esc(f.n)}</span><span class="tk">${fmt(f.k * (f.dq || 1))} ккал</span></button>`;
+  return `<button class="tile" data-a="addFood" data-v="${f.id}"><span class="ic">${f.ic}</span><span class="tn">${esc(f.n)}</span><span class="tk">${f.water ? f.water + ' мл' : fmt(f.k * (f.dq || 1)) + ' ккал'}</span></button>`;
 }
 function tilesHtml(filter) {
   let list = sortedFoods();
@@ -552,11 +573,11 @@ function openHub() {
   <div class="hub3">
     <button class="big3 voicebtn" data-a="voice"><span class="ic">🎤</span><span><b>Сказать голосом</b><small>Просто опиши, что и на что потратил</small></span></button>
     <button class="big3" data-a="money" data-v="exp"><span class="ic">💰</span><span><b>Деньги</b><small>расход · доход · перевод</small></span></button>
-    <button class="big3" data-a="foodSheet" data-v="food"><span class="ic">🍗</span><span><b>Еда</b><small>что съел · шаги · вес · сон</small></span></button>
+    <button class="big3" data-a="foodSheet" data-v="food"><span class="ic">🍗</span><span><b>Еда</b><small>что съел · вода · шаги · вес · сон</small></span></button>
     <button class="big3" data-a="sport"><span class="ic">🏃</span><span><b>Спорт</b><small>прогулка · фитнес</small></span></button>
   </div>`);
 }
-const FS_TABS = [['food', '🍽️ Еда'], ['steps', '👣 Шаги'], ['weight', '⚖️ Вес'], ['sleep', '😴 Сон']];
+const FS_TABS = [['food', '🍽️ Еда'], ['water', '💧 Вода'], ['steps', '👣 Шаги'], ['weight', '⚖️ Вес'], ['sleep', '😴 Сон']];
 function initFoodSub(sub) {
   UI.fs = sub;
   if (sub === 'weight') UI.w = round1(weightProgress().cur);
@@ -568,9 +589,24 @@ function openFoodSheet(sub = 'food', keepDay = false) {
   openSheet(renderFoodSheet);
   if (sub === 'food') setTimeout(() => { const i = $('#foodText'); if (i && !matchMedia('(pointer:coarse)').matches) i.focus(); }, 300);
 }
+function dayPicker() {
+  const off = UI.foodDay || 0;
+  const custom = off < -2;
+  return `<div class="daypick">${[[0, 'Сегодня'], [-1, 'Вчера'], [-2, 'Позавчера']].map(([v, l]) => `<button class="chip ${off === v ? 'on' : ''}" data-a="fsDay" data-v="${v}">${l}</button>`).join('')}
+    <label class="chip datebtn ${custom ? 'on' : ''}">📅 ${custom ? dayLabel(viewDayKey()) : 'Дата'}<input type="date" id="fsDate" max="${dayKey()}" value="${viewDayKey()}"></label></div>`;
+}
 function renderFoodSheet() {
   const head = `<div class="grabber"></div><div class="row" style="margin-bottom:12px"><div class="seg grow">${FS_TABS.map(([k, l]) => `<button class="${UI.fs === k ? 'on' : ''}" data-a="fs" data-v="${k}">${l}</button>`).join('')}</div><button class="x" data-a="close">✕</button></div>`
-    + (UI.foodDay ? `<div class="hint">Запишется на ${dayLabel(viewDayKey()).toLowerCase()}</div>` : '');
+    + (UI.fs !== 'sleep' ? dayPicker() : '');
+  if (UI.fs === 'water') {
+    const d = buckets()[viewDayKey()] || emptyDay(); const st = dayStats(d); const need = waterNeed(st);
+    return `${head}
+    <div class="total" style="margin-bottom:8px"><div class="tv num">💧 ${fmt(st.water)} <small style="font-size:16px" class="muted">/ ${fmt(need)} мл</small></div></div>
+    ${bar(st.water, need, 'blue')}
+    <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:14px">${[[250, '🥛', 'стакан'], [330, '🥤', '0,33 л'], [500, '🍶', '0,5 л'], [1000, '💧', '1 литр']].map(([ml, ic, l]) => `<button class="tile" data-a="waterAdd" data-v="${ml}"><span class="ic">${ic}</span><span class="tn">+${ml}</span><span class="tk">${l}</span></button>`).join('')}</div>
+    ${d.wa.length ? `<div class="card list" style="margin-top:12px">${[...d.wa].sort((a, b) => b.t - a.t).map((w) => `<div class="item"><span class="ii">💧</span><span class="grow"><div class="it">${fmt(w.ml)} мл</div><div class="is">${hhmm(w.t)}</div></span><button class="btn ghost sm" data-a="waterDel" data-v="${w.id}">✕</button></div>`).join('')}</div>` : ''}
+    <div class="note">Норма ≈ 33 мл на кг веса + 0,5 л на час спорта. Чай и компот тоже можно добавлять сюда.</div>`;
+  }
   if (UI.fs === 'steps') {
     return `${head}<p class="muted" style="margin-top:0">Сколько шагов за день? Цифра есть в приложении «Здоровье» на iPhone.</p>
     <div class="chips wrap">${[3000, 5000, 8000, 10000, 12000, 15000].map((o) => `<button class="chip big" data-a="stepsSave" data-v="${o}">${fmt(o)}</button>`).join('')}</div>
@@ -653,18 +689,24 @@ function parseChunk(raw) {
     return { custom: true, name: name[0].toUpperCase() + name.slice(1), k: +kc[1], p: 0, qty: 1 };
   }
   let grams = null, qty = null;
-  const gm = s.match(/(\d+(?:[.,]\d+)?)\s*(г|гр|грамм[а-я]*|g|мл|ml)(?![а-яa-z])/);
+  const lm = s.match(/(\d+(?:[.,]\d+)?)\s*(л|литр[а-я]*|l)(?![а-яa-z])/);
+  if (lm) { grams = parseFloat(lm[1].replace(',', '.')) * 1000; s = s.replace(lm[0], ' '); }
+  const gm = grams ? null : s.match(/(\d+(?:[.,]\d+)?)\s*(г|гр|грамм[а-я]*|g|мл|ml)(?![а-яa-z])/);
   if (gm) { grams = parseFloat(gm[1].replace(',', '.')); s = s.replace(gm[0], ' '); }
   const nm = s.match(/(\d+(?:[.,]\d+)?)/);
   if (nm) { qty = parseFloat(nm[1].replace(',', '.')); s = s.replace(nm[0], ' '); }
   else for (const w in NUM_WORDS) if (wholeWord(s, w)) { qty = NUM_WORDS[w]; break; }
-  const f = findFood(s);
+  let f = findFood(s);
   if (!f) return { bad: raw.trim() };
+  // «кола 0,3 л», «вода 0,3» — берём маленькую бутылку, а не долю большой
+  if (grams && grams <= 350 && (f.id === 'cola' || f.id === 'water05')) f = foodById(f.id === 'cola' ? 'cola03' : 'water03') || f;
+  if (!grams && qty && qty < 1 && (f.id === 'cola' || f.id === 'water05')) { grams = qty * 1000; f = foodById(grams <= 350 ? (f.id === 'cola' ? 'cola03' : 'water03') : f.id) || f; }
   if (grams && f.g) qty = grams / f.g;
   return { f, qty: round1(qty || f.dq || 1) };
 }
 function parseFood(text) {
-  return text.split(/[,;\n+]|\s+и\s+|\s+плюс\s+/i).map(parseChunk).filter(Boolean);
+  // запятая внутри числа («0,5») — не разделитель
+  return text.split(/,(?!\d)|(?<!\d),|[;\n+]|\s+и\s+|\s+плюс\s+/i).map(parseChunk).filter(Boolean);
 }
 function updateFoodPreview() {
   const inp = $('#foodText'); if (!inp) return;
@@ -692,6 +734,25 @@ function foodEntry(f, qty) {
 }
 
 /* ---------- Казна ---------- */
+const isDebt = (t) => t.cat === 'people' || t.cat === 'debt_in';
+function debtsSummary() {
+  const m = {};
+  S.tx.forEach((t) => {
+    if (!isDebt(t)) return;
+    const name = (t.note || '').trim() || 'Без имени'; const k = norm(name);
+    const r = m[k] || (m[k] = { name, gave: 0, back: 0, last: 0 });
+    if (t.cat === 'people') r.gave += t.amount; else r.back += t.amount;
+    r.last = Math.max(r.last, t.t);
+  });
+  return Object.values(m).sort((a, b) => (b.gave - b.back) - (a.gave - a.back) || b.last - a.last);
+}
+function debtCard() {
+  const list = debtsSummary(); if (!list.length) return '';
+  const owed = sum(list, (r) => Math.max(0, r.gave - r.back));
+  return `<h2>🤝 Долги <small>${owed ? 'тебе должны ' + som(owed) : 'все закрыты ✓'}</small></h2>
+  <div class="card list">${list.slice(0, 12).map((r) => { const rest = r.gave - r.back; const st = rest > 0.5 ? `<b class="gold num">должен ${fmt(rest)}</b>` : rest < -0.5 ? `<b class="green num">+${fmt(-rest)}</b>` : '<b class="green">✓ закрыт</b>'; return `<div class="item"><span class="ii">🤝</span><span class="grow"><div class="it">${esc(r.name)}</div><div class="is">дал ${fmt(r.gave)} · вернули ${fmt(r.back)}</div></span>${st}</div>`; }).join('')}</div>
+  <div class="note">«Дал в долг» и «вернули долг» гасят друг друга и не считаются тратами и доходами месяца. Имя пишется в заметке — так долги собираются по людям.</div>`;
+}
 function renderMoney() {
   const g = game(), bal = g.bal;
   const now = new Date();
@@ -699,10 +760,10 @@ function renderMoney() {
   const me = new Date(ms.getFullYear(), ms.getMonth() + 1, 1);
   const fAcc = UI.mAcc || null;
   const monthTx = S.tx.filter((t) => t.t >= ms.getTime() && t.t < me.getTime() && (!fAcc || t.acc === fAcc || t.to === fAcc));
-  const inc = sum(monthTx.filter((t) => t.type === 'inc' && !t.rec), (t) => t.amount);
-  const exp = sum(monthTx.filter((t) => t.type === 'exp'), (t) => t.amount);
+  const inc = sum(monthTx.filter((t) => t.type === 'inc' && !t.rec && !isDebt(t)), (t) => t.amount);
+  const exp = sum(monthTx.filter((t) => t.type === 'exp' && !isDebt(t)), (t) => t.amount);
   const byCat = {};
-  monthTx.filter((t) => t.type === 'exp').forEach((t) => (byCat[t.cat] = (byCat[t.cat] || 0) + t.amount));
+  monthTx.filter((t) => t.type === 'exp' && !isDebt(t)).forEach((t) => (byCat[t.cat] = (byCat[t.cat] || 0) + t.amount));
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
   const maxCat = cats.length ? cats[0][1] : 1;
   const unsorted = S.tx.filter(isUnsorted).length;
@@ -730,6 +791,8 @@ function renderMoney() {
   <div class="note">Забыл записывать? «📥 Выписка» — загрузи PDF или скриншоты из банка, ИИ сам разнесёт операции по дням. «🧮 Сверка» — впиши реальный баланс, разница запишется.</div>
 
   ${unsorted ? `<button class="alert" style="margin-top:14px" data-a="sortNext"><span style="font-size:22px">❓</span><span class="grow">Ждут категорию: <b>${unsorted}</b></span><span>Разобрать ›</span></button>` : ''}
+
+  ${debtCard()}
 
   <h2>Хронология</h2>
   <div class="daynav">
@@ -798,6 +861,7 @@ function renderMoneySheet() {
   ${m.mode !== 'tr' ? `<div class="cats">${cats.map((c) => c === 'more' ? `<button class="cat more" data-a="mMore"><span class="ic">${UI.allCats ? '▴' : '⋯'}</span><span>${UI.allCats ? 'Свернуть' : 'Ещё'}</span></button>` : `<button class="cat ${m.cat === c[0] ? 'on' : ''}" data-a="mCat" data-v="${c[0]}"><span class="ic">${c[1]}</span><span>${c[2]}</span></button>`).join('')}</div>` : ''}
   <div class="row" style="margin-top:${m.mode === 'tr' ? 12 : 0}px">
     <div class="seg" style="flex:none"><button class="${m.day === 0 ? 'on' : ''}" data-a="mDay" data-v="0">Сегодня</button><button class="${m.day === 1 ? 'on' : ''}" data-a="mDay" data-v="1">Вчера</button></div>
+    <label class="chip datebtn ${m.day == null ? 'on' : ''}">📅${m.day == null && m.t ? ' ' + new Date(m.t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''}<input type="date" id="mDate" max="${dayKey()}" value="${dayKey(moneyTime())}"></label>
     <input id="mNote" class="grow" placeholder="Заметка" value="${esc(m.note)}" autocomplete="off" style="padding:8px 10px">
   </div>
   <div class="keypad">${keys.map((k) => `<button class="key ${k === '⌫' || k === '000' ? 'fn' : ''}" data-a="mKey" data-v="${k}">${k}</button>`).join('')}</div>
@@ -856,6 +920,10 @@ async function saveMoney() {
   if (!old) {
     if (tooFast()) return;
     const dup = S.tx.find((t) => !t.rec && t.type === tx.type && t.amount === tx.amount && t.cat === tx.cat && t.acc === tx.acc && Math.abs(t.t - tx.t) < 5 * 60000);
+    if ((tx.cat === 'people' || tx.cat === 'debt_in') && !tx.note) {
+      const names = debtsSummary().filter((r) => r.name !== 'Без имени' && (tx.cat === 'people' || r.gave > r.back)).map((r) => r.name).slice(0, 6);
+      tx.note = await askText(tx.cat === 'people' ? `🤝 Кому даёшь в долг <b>${fmt(tx.amount)} сом</b>?` : `🤝 Кто вернул <b>${fmt(tx.amount)} сом</b>?`, 'Имя', names);
+    }
     if (dup && !(await ask(`Такая же запись уже есть: <b>${tx.type === 'inc' ? '+' : '−'}${fmt(tx.amount)} · ${tx.type === 'tr' ? 'перевод' : catOf(tx.type, tx.cat).n}</b> в ${hhmm(dup.t)}.<br>Записать ещё раз?`, 'Да, ещё раз', 'Нет'))) return;
   }
   closeSheet();
@@ -923,6 +991,7 @@ function openEditFood(id) {
   <div class="dim" style="text-align:center">${fmt(e.k)} ккал · Б ${round1(e.p)} · Ж ${round1(e.f || 0)} · У ${round1(e.c || 0)} — за ${esc(e.unit || 'порцию')}</div>
   <div class="stepper"><button data-a="fqty" data-v="-0.5">−</button><b class="num">${round1(e.qty)}</b><button data-a="fqty" data-v="0.5">＋</button></div>
   <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">Б ${Math.round(foodProt(e))} г · Ж ${Math.round((e.f || 0) * e.qty)} г · У ${Math.round((e.c || 0) * e.qty)} г</div></div>
+  <div class="field"><label>📅 Дата — если записал не в тот день</label><input type="date" id="feDate" max="${dayKey()}" value="${dayKey(e.t)}"></div>
   <button class="btn" data-a="close">Готово</button>
   <button class="btn danger" style="margin-top:8px" data-a="fdel">Удалить</button>`);
   UI.editFood = id;
@@ -990,7 +1059,7 @@ function renderMe() {
     <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
     <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.5 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.6 · ${S.food.length + S.tx.length + S.act.length} записей</p>
   `;
 }
 function profileForm(p) {
@@ -1121,6 +1190,11 @@ const A = {
   addFood: async (el) => {
     const f = foodById(el.dataset.v); if (!f) return;
     if (tooFast()) return;
+    if (f.water) {
+      const w = { id: uid(), t: viewDayTime(), ml: f.water };
+      act(() => { S.water.push(w); S.usage[f.id] = (S.usage[f.id] || 0) + 1; }, `💧 +${f.water} мл воды`, () => act(() => { S.water = S.water.filter((x) => x.id !== w.id); }, 'Отменено'));
+      return;
+    }
     const key = viewDayKey();
     const same = S.food.filter((x) => x.fid === f.id && dayKey(x.t) === key).sort((a, b) => b.t - a.t);
     if (same.length) {
@@ -1144,17 +1218,27 @@ const A = {
   },
   saveText: () => {
     if (tooFast()) return;
-    const parts = parseFood($('#foodText').value).filter((p) => !p.bad);
+    const all = parseFood($('#foodText').value).filter((p) => !p.bad);
     const t = viewDayTime();
+    const waters = all.filter((p) => p.f && p.f.water).map((p) => ({ id: uid(), t, ml: Math.round(p.f.water * p.qty) }));
+    const parts = all.filter((p) => !(p.f && p.f.water));
     const entries = parts.map((p) => (p.custom
       ? { id: uid(), t, name: p.name, ic: '🍽️', unit: 'порция', qty: 1, k: p.k, p: 0, ...(UI.linkTx ? { tx: UI.linkTx } : {}) }
       : { ...foodEntry(p.f, p.qty), t }));
     const ids = entries.map((e) => e.id);
     closeSheet();
-    act(() => { S.food.push(...entries); parts.forEach((p) => { if (p.f) S.usage[p.f.id] = (S.usage[p.f.id] || 0) + 1; }); },
-      `Записано: ${entries.length} · ${fmt(sum(entries, foodKcal))} ккал`, () => act(() => { S.food = S.food.filter((x) => !ids.includes(x.id)); }, 'Отменено'));
+    act(() => { S.food.push(...entries); S.water.push(...waters); parts.forEach((p) => { if (p.f) S.usage[p.f.id] = (S.usage[p.f.id] || 0) + 1; }); },
+      `Записано: ${entries.length} · ${fmt(sum(entries, foodKcal))} ккал${waters.length ? ` · 💧 ${fmt(sum(waters, (w) => w.ml))} мл` : ''}`,
+      () => act(() => { S.food = S.food.filter((x) => !ids.includes(x.id)); S.water = S.water.filter((x) => !waters.includes(x)); }, 'Отменено'));
   },
   editFood: (el) => openEditFood(el.dataset.v),
+  fsDay: (el) => { UI.foodDay = +el.dataset.v; initFoodSub(UI.fs); refreshSheet(); },
+  waterAdd: (el) => {
+    if (tooFast()) return;
+    const w = { id: uid(), t: viewDayTime(), ml: +el.dataset.v };
+    act(() => S.water.push(w), `💧 +${w.ml} мл`, () => act(() => { S.water = S.water.filter((x) => x.id !== w.id); }, 'Отменено'));
+  },
+  waterDel: (el) => { const w = S.water.find((x) => x.id === el.dataset.v); act(() => { S.water = S.water.filter((x) => x.id !== w.id); }, 'Удалено', () => act(() => S.water.push(w), 'Восстановлено')); },
   fqty: (el) => { const e = S.food.find((x) => x.id === UI.editFood); if (!e) return; const q = Math.max(0.5, round1(e.qty + +el.dataset.v)); act(() => { e.qty = q; }); refreshSheet(); },
   fdel: () => { const e = S.food.find((x) => x.id === UI.editFood); closeSheet(); act(() => { S.food = S.food.filter((x) => x.id !== e.id); }, 'Удалено', () => act(() => S.food.push(e), 'Восстановлено')); },
   customFood: openCustomFood,
@@ -1192,7 +1276,9 @@ const A = {
   },
   editAct: (el) => {
     const e = S.act.find((x) => x.id === el.dataset.v); const Ak = actById(e.kind);
-    openSheet(() => `${sheetHead(`${Ak.ic} ${Ak.n}`)}<div class="total" style="margin-bottom:14px"><div class="tv">${e.steps ? fmt(e.steps) + ' шагов' : e.min + ' мин'}</div><div class="tl">−${fmt(e.kcal)} ккал · ${hhmm(e.t)}</div></div>
+    UI.editActId = e.id;
+    openSheet(() => `${sheetHead(`${Ak.ic} ${Ak.n}`)}<div class="total" style="margin-bottom:14px"><div class="tv">${e.steps ? fmt(e.steps) + ' шагов' : e.min + ' мин'}</div><div class="tl">−${fmt(e.kcal)} ккал · ${dayLabel(dayKey(e.t))}, ${hhmm(e.t)}</div></div>
+      <div class="field"><label>📅 Дата</label><input type="date" id="aeDate" max="${dayKey()}" value="${dayKey(e.t)}"></div>
       <button class="btn danger" data-a="actDel" data-v="${e.id}">Удалить</button>`);
   },
   actDel: (el) => { const e = S.act.find((x) => x.id === el.dataset.v); closeSheet(); act(() => { S.act = S.act.filter((x) => x.id !== e.id); }, 'Удалено', () => act(() => S.act.push(e), 'Восстановлено')); },
@@ -1301,7 +1387,7 @@ const A = {
     const n = S.food.length + S.tx.length + S.act.length + S.sleep.length + S.weights.length;
     if (!(await ask(`Удалить все записи (${n}): еду, траты, спорт, сон и вес?<br>Профиль, счета и их начальные балансы останутся. <b>Отменить нельзя.</b>`, 'Удалить', 'Отмена'))) return;
     const w = S.profile.weight;
-    S.food = []; S.tx = []; S.act = []; S.sleep = []; S.bedMarks = []; S.coach = []; S.usage = {}; S.seenAch = []; S.lastLevel = 1;
+    S.food = []; S.tx = []; S.act = []; S.sleep = []; S.water = []; S.bedMarks = []; S.coach = []; S.usage = {}; S.seenAch = []; S.lastLevel = 1;
     S.weights = [{ id: uid(), t: Date.now(), kg: w }]; S.profile.startWeight = w;
     save(); render(); toast('🧹 Записи удалены. Начинаем с чистого листа!');
   },
@@ -1331,6 +1417,25 @@ document.addEventListener('input', (e) => {
   if (el.id === 'foodText') updateFoodPreview();
   else if (el.id === 'mNote' && UI.money) UI.money.note = el.value;
   else if (el.dataset.obBal) { const b = UI.ob.banks[el.dataset.obBal]; if (b) b.bal = el.value; }
+});
+// смена даты (поля <input type="date">)
+document.addEventListener('change', (e) => {
+  const el = e.target; if (!el.value || !/^\d{4}-\d{2}-\d{2}$/.test(el.value)) return;
+  const v = el.value > dayKey() ? dayKey() : el.value;
+  if (el.id === 'feDate') {
+    const f = S.food.find((x) => x.id === UI.editFood); if (!f) return;
+    act(() => { f.t = withDate(f.t, v); }, `📅 Перенесено на ${dayLabel(v).toLowerCase()}`); refreshSheet();
+  } else if (el.id === 'aeDate') {
+    const a = S.act.find((x) => x.id === UI.editActId); if (!a) return;
+    act(() => { a.t = withDate(a.t, v); }, `📅 Перенесено на ${dayLabel(v).toLowerCase()}`); refreshSheet();
+  } else if (el.id === 'mDate' && UI.money) {
+    const m = UI.money; m.t = withDate(m.t || Date.now(), v);
+    m.day = v === dayKey() ? 0 : v === dayKey(Date.now() - DAY) ? 1 : null;
+    refreshSheet();
+  } else if (el.id === 'fsDate') {
+    UI.foodDay = Math.min(0, Math.round((new Date(v + 'T12:00:00') - new Date(dayKey() + 'T12:00:00')) / DAY));
+    initFoodSub(UI.fs); refreshSheet();
+  }
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'foodText') { e.preventDefault(); if ($('[data-a="saveText"]')) A.saveText(); else e.target.blur(); }

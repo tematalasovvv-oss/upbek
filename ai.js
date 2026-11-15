@@ -30,7 +30,7 @@ async function aiPickModel(key) {
   const main = all.filter((n) => !/lite/.test(n));
   const model = main[0] || all[0] || 'gemini-2.5-flash';
   const alts = [...main.slice(1, 2), ...all.filter((n) => /lite/.test(n)).slice(0, 1)].filter((n) => n !== model);
-  return { model, alts };
+  return { model, alts, all: [...main.slice(0, 3), ...all.filter((n) => /lite/.test(n)).slice(0, 2)] };
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 function aiStatus(text) { const el = document.getElementById('aiStatus'); if (el) el.textContent = text; }
@@ -39,14 +39,17 @@ async function aiCall(parts, schema) {
   const c = aiCfg();
   if (!c.key) throw new Error('NO_KEY');
   const models = [...new Set([c.model || 'gemini-2.5-flash', ...(c.alts || [])])];
-  const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema } });
+  // «размышления» модели для наших задач не нужны и сильно тормозят — выключаем
+  const think = (m) => (/gemini-2\.5-flash/.test(m) ? { thinkingBudget: 0 } : /gemini-3/.test(m) ? { thinkingLevel: 'low' } : null);
+  let noThink = !!c.noThink;
+  const mkBody = (m) => JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema, ...(!noThink && think(m) ? { thinkingConfig: think(m) } : {}) } });
   let last = '';
   for (let mi = 0; mi < models.length; mi++) {
     if (mi > 0) aiStatus('Основная модель занята — пробую запасную…');
     for (let attempt = 0; attempt < 3; attempt++) {
       let r, j = {};
       try {
-        r = await fetch(`${GEM}/models/${models[mi]}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': c.key }, body });
+        r = await fetch(`${GEM}/models/${models[mi]}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': c.key }, body: mkBody(models[mi]) });
         j = await r.json().catch(() => ({}));
       } catch (e) { last = e.message; if (attempt < 2) { aiStatus('Нет связи — повторяю…'); await wait(2000); continue; } break; }
       if (r.ok) {
@@ -56,6 +59,7 @@ async function aiCall(parts, schema) {
         return JSON.parse(text);
       }
       last = (j.error && j.error.message) || 'HTTP ' + r.status;
+      if (r.status === 400 && /think/i.test(last) && !noThink) { noThink = true; aiSaveCfg({ ...aiCfg(), noThink: true }); attempt--; continue; }
       if (![429, 500, 502, 503, 504].includes(r.status)) throw new Error(aiErr(last));
       if (/per ?day|PerDay|daily/i.test(last)) break; // дневной лимит этой модели — сразу к запасной
       const rd = ((j.error && j.error.details) || []).find((d) => d.retryDelay);
@@ -107,14 +111,14 @@ function foodPrompt(hasImage, text) {
 Правила: названия короткие, по-русски; emoji — один подходящий эмодзи; числа — реалистичные средние значения для такой порции; каждое блюдо и напиток — отдельной строкой. Если на фото несколько одинаковых порций, перечисли их отдельно.
 Если еды нет — верни пустой items и объясни в comment. В comment одной короткой фразой можно дать совет (цель пользователя: ${GOALS[p.goal] ? GOALS[p.goal].n.toLowerCase() : 'здоровое питание'}).${text ? `\nОписание от пользователя: «${text}»` : ''}`;
 }
-async function imageToB64(file, max = 1024) {
+async function imageToB64(file, max = 800) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Не удалось открыть фото')); i.src = url; });
     const k =Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
     const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
     c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.8).split(',')[1];
+    return c.toDataURL('image/jpeg', 0.72).split(',')[1];
   } finally { URL.revokeObjectURL(url); }
 }
 async function aiFood({ text, image }) {
@@ -180,7 +184,10 @@ function openAiSetup() {
   </div>
   <input id="aiKey" placeholder="AIza…" autocomplete="off" autocapitalize="off" spellcheck="false" value="">
   <button class="btn gold" style="margin-top:10px" data-a="aiConnect">Подключить</button>
-  ${c.key ? `<div class="note">Сейчас подключено: <b>${esc(c.model || '')}</b></div><button class="btn danger" style="margin-top:8px" data-a="aiOff">Отключить ИИ</button>` : ''}
+  ${c.key ? `<h3 style="font-size:15px;margin:16px 0 6px">Модель</h3>
+  <div class="card list">${(c.all && c.all.length ? c.all : [c.model]).map((m) => `<button class="item" data-a="aiModel" data-v="${esc(m)}"><span class="ii">${m === c.model ? '✅' : (/lite/.test(m) ? '⚡' : '⭐')}</span><span class="grow"><div class="it">${esc(m)}</div><div class="is">${/lite/.test(m) ? 'самая быстрая, чуть менее точная' : 'точная, рекомендуемая'}</div></span></button>`).join('')}</div>
+  <div class="note">Если ИИ отвечает медленно — выбери ⚡ «lite». Модели Pro умнее, но заметно медленнее и с маленьким бесплатным лимитом, поэтому их здесь нет.</div>
+  <button class="btn danger" style="margin-top:8px" data-a="aiOff">Отключить ИИ</button>` : ''}
   <div class="note">🔒 Ключ хранится только на этом телефоне. На бесплатном тарифе Google может использовать запросы для улучшения моделей — не фотографируй ничего личного.</div>`);
 }
 function aiSection() {
@@ -200,10 +207,15 @@ Object.assign(A, {
     if (key.length < 20) { toast('Вставь ключ целиком'); return; }
     el.disabled = true; el.textContent = 'Проверяю ключ…';
     try {
-      const { model, alts } = await aiPickModel(key);
-      aiSaveCfg({ key, model, alts });
+      const { model, alts, all } = await aiPickModel(key);
+      aiSaveCfg({ key, model, alts, all });
       closeSheet(); render(); toast(`✨ Gemini подключён (${esc(model)})`);
     } catch (e) { el.disabled = false; el.textContent = 'Подключить'; toast('⚠️ ' + esc(aiErr(e.message))); }
+  },
+  aiModel: (el) => {
+    const c = aiCfg(); const m = el.dataset.v; const all = c.all || [c.model];
+    aiSaveCfg({ ...c, model: m, alts: all.filter((x) => x !== m).slice(0, 2) });
+    refreshSheet(); toast(`✨ Модель: ${esc(m)}`);
   },
   aiOff: () => { aiSaveCfg({}); closeSheet(); render(); toast('ИИ отключён'); },
   aiPhoto: () => {
@@ -477,6 +489,6 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) setT
 // у тех, кто подключил ИИ раньше, ещё нет запасных моделей — дозаписываем тихо
 (function fillAlts() {
   const c = aiCfg();
-  if (!c.key || c.alts) return;
-  aiPickModel(c.key).then(({ alts }) => { const n = aiCfg(); if (n.key === c.key) aiSaveCfg({ ...n, alts }); }).catch(() => {});
+  if (!c.key || (c.alts && c.all)) return;
+  aiPickModel(c.key).then(({ alts, all }) => { const n = aiCfg(); if (n.key === c.key) aiSaveCfg({ ...n, alts: n.alts || alts, all }); }).catch(() => {});
 })();
