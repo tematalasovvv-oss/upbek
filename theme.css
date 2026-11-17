@@ -305,3 +305,6 @@ textarea { resize: none; }
 .pq { display: grid; grid-template-columns: 64px 1fr 40px; align-items: center; gap: 8px; font-size: 12px; margin-top: 6px; color: var(--muted); }
 .pq b { color: var(--text); text-align: right; }
 .nudges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+.eve-moods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.eve-moods .tile { padding: 8px 4px; }

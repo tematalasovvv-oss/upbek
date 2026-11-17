@@ -149,13 +149,46 @@ function renderCycleCal() {
     <div class="split" style="margin-top:0"><div><span>Средний цикл</span><b class="num">${st.cycleLen} дн.</b></div><div><span>Месячные</span><b class="num">${st.periodLen} дн.</b></div></div>
     <div class="dim" style="margin-top:8px">Последние циклы: ${cyc}${st.vari != null ? ` · ${st.vari <= 7 ? '✓ регулярный' : '⚠️ нерегулярный — разброс ' + st.vari + ' дн.'}` : ''}</div>
   </div>
+  <h3 class="vh">🩸 Месячные</h3>
+  <div class="card list">${[...CY().periods].sort((a, b) => (a.start < b.start ? 1 : -1)).slice(0, 12).map((p) => { const e = perEnd(p, st.periodLen); return `<div class="item"><span class="ii">🩸</span><span class="grow"><div class="it">${new Date(kT(p.start)).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })} — ${p.end ? new Date(kT(p.end)).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : 'идут'}</div><div class="is">${kDiff(p.start, e) + 1} дн.</div></span><button class="btn ghost sm" data-a="cyPEdit" data-v="${p.start}">✏️</button></div>`; }).join('') || '<div class="empty">Пока нет записей</div>'}</div>
+  <button class="btn ghost" style="margin:8px 0 12px" data-a="cyPEdit" data-v="">＋ Добавить прошлые месячные</button>
   <div class="card">
     <label class="checkrow"><input type="checkbox" ${CY().share ? 'checked' : ''} data-a="cyShare"> 💑 Делиться фазой цикла с партнёром</label>
     <div class="dim">${S.pair && S.pair.mate ? `Партнёр (${esc(S.pair.mate.name)}) увидит утром только фазу и совет, как тебя поддержать. Симптомы, даты и заметки не передаются.` : 'Станет доступно, когда вы свяжетесь в «Паре» (Ещё → Настройки → Пара).'}</div>
   </div>
   <div class="row"><button class="btn ghost sm" data-a="cySetup">⚙️ Настройки цикла</button><button class="btn ghost sm" data-a="cyOff">Выключить</button></div>
+  <div class="note">⏰ Вечерний вопрос «Как самочувствие?» появляется на главной с 20:00. Чтобы iPhone напоминал открыть UpBek: приложение «Напоминания» → новое → «Как самочувствие? (UpBek)» → дата и время 20:00 → «Повтор: ежедневно».</div>
   <div class="note">Нажми на день, чтобы отметить выделения, симптомы и настроение. Прогноз — оценка, не метод контрацепции. Если задержка больше 7 дней или боли сильные — к врачу.</div>`;
 }
+/* ---- добавить / изменить месячные ---- */
+function openPeriodEdit(start) {
+  const p = start ? CY().periods.find((x) => x.start === start) : null;
+  const pl = CY().set.periodLen;
+  UI.cyEdit = start || null;
+  const s0 = p ? p.start : kAdd(dayKey(), -30), e0 = p ? perEnd(p, pl) : kAdd(s0, pl - 1);
+  openSheet(() => `${sheetHead(p ? '✏️ Месячные' : '＋ Прошлые месячные')}
+  <div class="grid2">
+    <div class="field"><label>Начало</label><input type="date" id="pStart" max="${dayKey()}" value="${s0}"></div>
+    <div class="field"><label>Конец</label><input type="date" id="pEnd" max="${dayKey()}" value="${e0}"></div>
+  </div>
+  ${p && !p.end ? '<label class="checkrow"><input type="checkbox" id="pOngoing" checked> Ещё идут</label>' : ''}
+  <button class="btn gold" data-a="cyPSave">Сохранить</button>
+  ${p ? '<button class="btn danger" style="margin-top:8px" data-a="cyPDel">Удалить</button>' : ''}
+  <div class="note">Чем больше прошлых циклов добавлено, тем точнее прогноз: средняя длина считается по последним 6.</div>`);
+}
+
+/* ---- вечерний вопрос (с 20:00 до 4:00), только при включённом цикле ---- */
+function eveningKey() { const d = new Date(); return d.getHours() < 4 ? dayKey(Date.now() - DAY) : dayKey(); }
+function cycleEveningCard() {
+  if (!cycleOn()) return '';
+  const h = new Date().getHours(); if (h < 20 && h >= 4) return '';
+  const k = eveningKey(), c = CY(), log = c.days[k];
+  if ((c.evening || {})[k] || c.eveSkip === k || (log && ((log.mood || []).length || (log.sym || []).length))) return '';
+  return `<div class="card prompt eve-card"><div class="row"><span style="font-size:28px">🌙</span><div class="grow"><b>Как ты себя чувствуешь сегодня?</b><div class="dim">Одно касание — и день отмечен</div></div><button class="x" data-a="cyEveSkip">✕</button></div>
+  <div class="eve-moods">${MOODS.slice(0, 6).map(([id, ic, n]) => `<button class="tile" data-a="cyEve" data-v="${id}"><span class="ic">${ic}</span><span class="tn">${n}</span></button>`).join('')}</div>
+  <button class="btn ghost sm" style="margin-top:8px" data-a="cyDay" data-v="${k}">📝 Подробнее: симптомы, выделения</button></div>`;
+}
+
 /* ---- отметка дня ---- */
 function openCycleDay(k) { UI.cyK = k; openSheet(renderCycleDay); }
 function renderCycleDay() {
@@ -195,6 +228,28 @@ Object.assign(A, {
     act(() => { const p = CY().periods.find((x) => x.start === st.last.start); p.end = dayKey(); normPeriods(); }, '✓ Месячные закончились');
   },
   cyCal: openCycleCal,
+  cyPEdit: (el) => openPeriodEdit(el.dataset.v || null),
+  cyPSave: () => {
+    const s = ($('#pStart') || {}).value, e = ($('#pEnd') || {}).value, ongoing = $('#pOngoing') && $('#pOngoing').checked;
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) { toast('Укажи дату начала'); return; }
+    if (!ongoing && (!e || e < s)) { toast('Конец не может быть раньше начала'); return; }
+    if (s > dayKey() || (!ongoing && e > dayKey())) { toast('Дата из будущего'); return; }
+    if (!ongoing && kDiff(s, e) > 11) { toast('Месячные дольше 12 дней — проверь даты'); return; }
+    const old = UI.cyEdit;
+    openSheet(renderCycleCal);
+    act(() => { const c = CY(); if (old) c.periods = c.periods.filter((p) => p.start !== old); c.periods.push({ start: s, end: ongoing ? null : e }); normPeriods(); }, old ? '✓ Месячные изменены' : '🩸 Месячные добавлены — прогноз уточнён');
+  },
+  cyPDel: async () => {
+    if (!(await ask('Удалить эти месячные из истории?', 'Удалить', 'Отмена'))) return;
+    const old = UI.cyEdit; openSheet(renderCycleCal);
+    act(() => { CY().periods = CY().periods.filter((p) => p.start !== old); }, 'Удалено');
+  },
+  cyEve: (el) => {
+    const k = eveningKey(), c = CY(), d = cyLog(k), s = new Set(d.mood || []);
+    s.add(el.dataset.v);
+    act(() => { d.mood = [...s]; c.evening = c.evening || {}; c.evening[k] = true; }, `🌙 Записано: ${(MOODS.find((m) => m[0] === el.dataset.v) || [])[1] || ''} Спокойной ночи 💗`);
+  },
+  cyEveSkip: () => { CY().eveSkip = eveningKey(); save(); render(); },
   cyShare: () => {
     const c = CY(); c.share = !c.share; save();
     if (typeof pairSync === 'function') pairSync(true).catch(() => {});

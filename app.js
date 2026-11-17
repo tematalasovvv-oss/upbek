@@ -208,7 +208,21 @@ const ACH = [
   ['lvl10', '🏅', 'Уровень 10', (g) => g.L >= 10],
   ['perfect7', '👑', '7 идеальных дней', (g) => g.perfect >= 7],
   ['rich', '💎', 'Казна 100 000', (g) => g.total >= 100000],
+  // цикл — видны только при включённом отслеживании цикла
+  ['cy_first', '🌸', 'Первая отметка цикла', () => cyCount('any') >= 1, true],
+  ['cy_hist3', '📚', '3 цикла в истории', () => ((S.cycle && S.cycle.periods) || []).length >= 3, true],
+  ['cy_mood7', '🎭', '7 дней настроения', () => cyCount('mood') >= 7, true],
+  ['cy_sym14', '📝', '14 дней самочувствия', () => cyCount('any') >= 14, true],
+  ['cy_eve7', '🌙', '7 вечерних отметок', () => Object.keys((S.cycle && S.cycle.evening) || {}).length >= 7, true],
+  ['cy_eve30', '🌕', '30 вечерних отметок', () => Object.keys((S.cycle && S.cycle.evening) || {}).length >= 30, true],
+  ['cy_reg', '🔄', 'Регулярный цикл', () => { if (typeof cycleStats !== 'function' || !S.cycle) return false; const st = cycleStats(); return st.vari != null && st.vari <= 7; }, true],
 ];
+function cyCount(kind) {
+  const days = (S.cycle && S.cycle.days) || {};
+  return Object.values(days).filter((d) => (kind === 'mood' ? (d.mood || []).length : (d.mood || []).length || (d.sym || []).length || (d.flow && d.flow !== 'none') || d.note)).length;
+}
+// список достижений: цикловые — только у тех, кто отслеживает цикл
+const achList = () => ACH.filter((a) => !a[4] || (typeof cycleOn === 'function' && cycleOn()));
 const achName = (a, g) => (typeof a[2] === 'function' ? a[2](g) : a[2]);
 
 function game() {
@@ -229,6 +243,7 @@ function game() {
   }
   xp += sum(S.coach || [], (c) => (c.goals || []).filter((x) => x.done).length * 30);
   xp += Object.keys(S.pairDone || {}).length * 50; // парные квесты
+  xp += cyCount('any') * 5; // отметки цикла и самочувствия
   // серия
   let streak = 0; const t = new Date(); t.setHours(12, 0, 0, 0);
   if (!b[dayKey(t)]) t.setDate(t.getDate() - 1);
@@ -483,6 +498,7 @@ function renderHero() {
     </div>
   </div>
 
+  ${typeof cycleEveningCard === 'function' ? cycleEveningCard() : ''}
   ${promptCards()}
   ${typeof pairCards === 'function' ? pairCards() : ''}
   ${typeof loanPrompts === 'function' ? loanPrompts() : ''}
@@ -498,7 +514,7 @@ function renderHero() {
 
   ${typeof mateCycleCard === 'function' ? mateCycleCard() : ''}
 
-  <h2>Достижения <small>${achs.length} / ${ACH.length}</small></h2>
+  <h2>Достижения <small>${achs.length} / ${achList().length}</small></h2>
   ${achs.length ? `<div class="chips">${achs.map((a) => `<span class="chip on">${a[1]} ${esc(achName(a, g))}</span>`).join('')}</div>` : '<div class="dim">Сделай первую запись — и получишь первое достижение 🌱</div>'}
   <button class="btn ghost sm" style="margin-top:10px" data-a="achSheet">Все достижения ›</button>
   `;
@@ -1153,20 +1169,20 @@ function renderMe() {
     <button class="item" data-a="profile"><span class="ii">👤</span><span class="grow"><div class="it">Настройки профиля</div><div class="is">Вес, рост, цель, свои нормы</div></span><span>›</span></button>
     <button class="item" data-a="pairOpen"><span class="ii">💑</span><span class="grow"><div class="it">Пара</div><div class="is">${S.pair && S.pair.mate ? 'Вы с ' + esc(S.pair.mate.name) + ' · дуэль и квесты' : S.pair && S.pair.code ? 'Ждём партнёра · код ' + esc(S.pair.code) : 'Дуэль недели, парные квесты, подбодрить'}</div></span><span>›</span></button>
     <button class="item" data-a="aiSheet"><span class="ii">✨</span><span class="grow"><div class="it">ИИ (Gemini)</div><div class="is">${typeof aiReady === 'function' && aiReady() ? 'Подключён · разборы недели' : 'Не подключён'}</div></span><span>›</span></button>
-    <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${g.ach.length} из ${ACH.length}</div></span><span>›</span></button>
+    <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${achList().filter((a) => g.ach.includes(a[0])).length} из ${achList().length}</div></span><span>›</span></button>
     <button class="item" data-a="themeSheet"><span class="ii">🎨</span><span class="grow"><div class="it">Тема оформления</div><div class="is">${themeName}</div></span><span>›</span></button>
     <button class="item" data-a="backupSheet"><span class="ii">💾</span><span class="grow"><div class="it">Резервное копирование</div><div class="is">Облако, код восстановления, файл</div></span><span>›</span></button>
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.8</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.9</p>
   `;
 }
 function openAchSheet() {
   const g = game();
   const order = (id) => { const i = S.seenAch.indexOf(id); return i < 0 ? -1 : i; };
-  const list = [...ACH].sort((a, b) => order(b[0]) - order(a[0]));
-  openSheet(() => `${sheetHead(`🏆 Достижения · ${g.ach.length} / ${ACH.length}`)}
+  const list = achList().sort((a, b) => order(b[0]) - order(a[0]));
+  openSheet(() => `${sheetHead(`🏆 Достижения · ${list.filter((a) => g.ach.includes(a[0])).length} / ${list.length}`)}
   <div class="achs">${list.map((a) => `<div class="ach ${g.ach.includes(a[0]) ? '' : 'lock'}"><span class="ic">${a[1]}</span><span>${esc(achName(a, g))}</span></div>`).join('')}</div>
   <div class="hint" style="margin-top:10px">Сначала — последние полученные</div>`);
 }
