@@ -229,3 +229,37 @@ grant execute on function public.pair_get(text, text) to anon, authenticated;
 grant execute on function public.pair_leave(text, text) to anon, authenticated;
 grant execute on function public.nudge_send(text, text, text) to anon, authenticated;
 grant execute on function public.nudge_pull(text, text) to anon, authenticated;
+
+-- ===== v3.14: свои сообщения партнёру + сигнал дуэли (старая 3-аргументная nudge_send остаётся для старых версий) =====
+alter table public.upbek_nudge add column if not exists msg text;
+
+create or replace function public.nudge_send(p_token text, p_pair text, p_kind text, p_msg text)
+returns json language plpgsql security definer set search_path = public as $$
+declare o text := upbek_owner(p_token); t text; n text;
+begin
+  if p_kind not in ('water', 'food', 'msg', 'duel') then raise exception 'bad kind'; end if;
+  if p_kind = 'msg' and (length(coalesce(trim(p_msg), '')) < 1 or length(p_msg) > 120) then raise exception 'bad msg'; end if;
+  if p_kind <> 'msg' then p_msg := null; end if;
+  select name into n from upbek_pair where pair = p_pair and owner = o;
+  if n is null then raise exception 'not in pair'; end if;
+  select owner into t from upbek_pair where pair = p_pair and owner <> o limit 1;
+  if t is null then raise exception 'no partner'; end if;
+  if (select count(*) from upbek_nudge where from_owner = o and created_at > now() - interval '1 day') >= 30 then raise exception 'too many'; end if;
+  insert into upbek_nudge (pair, from_owner, to_owner, from_name, kind, msg) values (p_pair, o, t, n, p_kind, p_msg);
+  return json_build_object('ok', true);
+end $$;
+
+drop function if exists public.nudge_pull(text, text);
+create function public.nudge_pull(p_token text, p_pair text)
+returns table (from_name text, kind text, created_at timestamptz, msg text)
+language plpgsql security definer set search_path = public as $$
+declare o text := upbek_owner(p_token);
+begin
+  return query select x.from_name, x.kind, x.created_at, x.msg from upbek_nudge x where x.to_owner = o and x.pair = p_pair order by x.id;
+  delete from upbek_nudge where to_owner = o and pair = p_pair;
+end $$;
+
+revoke all on function public.nudge_send(text, text, text, text) from public;
+revoke all on function public.nudge_pull(text, text) from public;
+grant execute on function public.nudge_send(text, text, text, text) to anon, authenticated;
+grant execute on function public.nudge_pull(text, text) to anon, authenticated;

@@ -324,15 +324,15 @@ function ask(html, yes = 'Да', no = 'Нет') {
     document.body.appendChild(el);
   });
 }
-function askText(html, placeholder, chips = []) {
+function askText(html, placeholder, chips = [], o = {}) {
   return new Promise((res) => {
     const el = document.createElement('div'); el.className = 'askbox';
-    el.innerHTML = `<div class="askcard"><div class="asktext">${html}</div>${chips.length ? `<div class="chips wrap" style="margin-bottom:10px">${chips.map((c) => `<button class="chip" data-n="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}<input id="askIn" placeholder="${esc(placeholder)}" autocomplete="off"><div class="row" style="margin-top:12px"><button class="btn ghost" data-r="0">Без имени</button><button class="btn gold" data-r="1">Готово</button></div></div>`;
+    el.innerHTML = `<div class="askcard"><div class="asktext">${html}</div>${chips.length ? `<div class="chips wrap" style="margin-bottom:10px">${chips.map((c) => `<button class="chip" data-n="${esc(c)}">${esc(c)}</button>`).join('')}</div>` : ''}<input id="askIn" placeholder="${esc(placeholder)}" autocomplete="off" maxlength="${o.max || 60}"><div class="row" style="margin-top:12px"><button class="btn ghost" data-r="0">${o.no || 'Без имени'}</button><button class="btn gold" data-r="1">${o.yes || 'Готово'}</button></div></div>`;
     const inp = () => el.querySelector('#askIn');
     el.addEventListener('click', (e) => {
       const c = e.target.closest('[data-n]'); if (c) { inp().value = c.dataset.n; return; }
       const b = e.target.closest('[data-r]'); if (!b) return;
-      const v = b.dataset.r === '1' ? inp().value.trim() : ''; el.remove(); res(v);
+      const v = b.dataset.r === '1' ? inp().value.trim() : (o.cancel ? null : ''); el.remove(); res(v);
     });
     document.body.appendChild(el); setTimeout(() => inp().focus(), 60);
   });
@@ -375,12 +375,14 @@ function qtyMode(f) {
   const pcs = u.match(/(\d+)\s*шт/);
   if (pcs) { const n = +pcs[1]; return { step: 1 / n, chips: [1, 2, 3, 4, 6, 8, 12, 16].filter((x) => x <= Math.max(4, n * 2)).map((x) => x / n) }; }
   if (u === 'шт') return { step: 1, chips: [1, 2, 3, 4, 5, 6, 8, 10] };
+  const vol = u.match(/^(\d+(?:[,.]\d+)?)\s*л$/);
+  if (vol) { const per = parseFloat(vol[1].replace(',', '.')) * 1000; return { step: 50 / per, chips: [200, 250, 300, 330, 500, 1000].map((x) => x / per) }; }
   return { step: 0.5, chips: [0.5, 1, 1.5, 2, 2.5, 3] };
 }
 function pickQty(f) {
   const m = qtyMode(f);
   let q = f.dq || 1;
-  const stdHint = `${amountText(f.u, 1)} — ${fmt(f.k)} ккал`;
+  const stdHint = f.water ? 'Выбери объём' : `${amountText(f.u, 1)} — ${fmt(f.k)} ккал`;
   const drink = /л$|стакан|кружка/.test(String(f.u || ''));
   return new Promise((res) => {
     const el = document.createElement('div'); el.className = 'askbox';
@@ -391,7 +393,7 @@ function pickQty(f) {
         <div class="qty-q">${drink ? 'Сколько выпил?' : 'Сколько съел?'}</div>
         <div class="stepper qty-step"><button data-q="-" aria-label="Меньше" ${atMin ? 'disabled' : ''}>−</button><b class="num" aria-live="polite">${amountText(f.u, q)}</b><button data-q="+" aria-label="Больше">＋</button></div>
         <div class="qty-chips">${m.chips.map((c) => `<button class="chip${Math.abs(c - q) < 1e-6 ? ' on' : ''}" data-c="${c}" aria-pressed="${Math.abs(c - q) < 1e-6}">${amountText(f.u, c)}</button>`).join('')}</div>
-        <div class="qty-sum"><b class="num">${fmt(k)} ккал</b><span>белок ${p} г</span></div>
+        <div class="qty-sum">${f.water ? `<b class="num">💧 ${fmt(Math.round(f.water * q))} мл</b><span>в водный баланс</span>` : `<b class="num">${fmt(k)} ккал</b><span>белок ${p} г</span>`}</div>
         <div class="row"><button class="btn ghost" data-r="0">Отмена</button><button class="btn gold" data-r="1">Записать</button></div></div>`;
     };
     draw();
@@ -823,11 +825,10 @@ function parseChunk(raw) {
   else for (const w in NUM_WORDS) if (wholeWord(s, w)) { qty = NUM_WORDS[w]; break; }
   let f = findFood(s);
   if (!f) return { bad: raw.trim() };
-  // «кола 0,3 л», «вода 0,3» — берём маленькую бутылку, а не долю большой
-  if (grams && grams <= 350 && (f.id === 'cola' || f.id === 'water05')) f = foodById(f.id === 'cola' ? 'cola03' : 'water03') || f;
-  if (!grams && qty && qty < 1 && (f.id === 'cola' || f.id === 'water05')) { grams = qty * 1000; f = foodById(grams <= 350 ? (f.id === 'cola' ? 'cola03' : 'water03') : f.id) || f; }
+  // «кола 0,3», «вода 0,33» — это литры: переводим в мл от бутылки 0,5 л
+  if (!grams && qty && qty < 1 && /л$/.test(f.u || '')) grams = qty * 1000;
   if (grams && f.g) qty = grams / f.g;
-  return { f, qty: round1(qty || f.dq || 1) };
+  return { f, qty: Math.round((qty || f.dq || 1) * 100) / 100 };
 }
 function parseFood(text) {
   // запятая внутри числа («0,5») — не разделитель
@@ -1251,7 +1252,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.13</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.14</p>
   `;
 }
 function openAchSheet() {
@@ -1399,8 +1400,10 @@ const A = {
     const f = foodById(el.dataset.v); if (!f) return;
     if (tooFast()) return;
     if (f.water) {
-      const w = { id: uid(), t: viewDayTime(), ml: f.water };
-      act(() => { S.water.push(w); S.usage[f.id] = (S.usage[f.id] || 0) + 1; }, `💧 +${f.water} мл воды`, () => act(() => { S.water = S.water.filter((x) => x.id !== w.id); }, 'Отменено'));
+      let wq = 1;
+      if (askQtyOn()) { wq = await pickQty(f); if (wq == null) return; }
+      const w = { id: uid(), t: viewDayTime(), ml: Math.round(f.water * wq) };
+      act(() => { S.water.push(w); S.usage[f.id] = (S.usage[f.id] || 0) + 1; }, `💧 +${w.ml} мл воды`, () => act(() => { S.water = S.water.filter((x) => x.id !== w.id); }, 'Отменено'));
       return;
     }
     const key = viewDayKey();
