@@ -143,3 +143,89 @@ grant execute on function public.board_leave(text, text) to anon, authenticated;
 revoke execute on function public.push_event(text, text, text) from anon, authenticated;
 delete from public.upbek_events;
 update public.upbek_board set detail = '{}'::jsonb;
+
+-- ===== v3.6: Пара (2 человека по коду): сводка без финансов и цикла + «подбодрить» =====
+create table if not exists public.upbek_pair (
+  pair text not null,
+  owner text not null,
+  name text not null,
+  summary jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (pair, owner)
+);
+create table if not exists public.upbek_nudge (
+  id bigint generated always as identity primary key,
+  pair text not null,
+  from_owner text not null,
+  to_owner text not null,
+  from_name text,
+  kind text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists upbek_nudge_to_idx on public.upbek_nudge (to_owner, pair);
+alter table public.upbek_pair enable row level security;
+alter table public.upbek_nudge enable row level security;
+revoke all on public.upbek_pair from anon, authenticated;
+revoke all on public.upbek_nudge from anon, authenticated;
+
+create or replace function public.pair_join(p_token text, p_pair text, p_name text, p_summary jsonb)
+returns json language plpgsql security definer set search_path = public as $$
+declare o text := upbek_owner(p_token);
+begin
+  if p_pair !~ '^[A-Z0-9]{6}$' then raise exception 'bad code'; end if;
+  if length(coalesce(p_name, '')) < 1 or length(p_name) > 24 then raise exception 'bad name'; end if;
+  if octet_length(coalesce(p_summary::text, '')) > 3000 then raise exception 'too big'; end if;
+  if not exists (select 1 from upbek_pair where pair = p_pair and owner = o)
+     and (select count(*) from upbek_pair where pair = p_pair) >= 2 then raise exception 'pair full'; end if;
+  insert into upbek_pair (pair, owner, name, summary, updated_at) values (p_pair, o, p_name, p_summary, now())
+  on conflict (pair, owner) do update set name = excluded.name, summary = excluded.summary, updated_at = now();
+  return json_build_object('ok', true, 'members', (select count(*) from upbek_pair where pair = p_pair));
+end $$;
+
+create or replace function public.pair_get(p_token text, p_pair text)
+returns table (name text, summary jsonb, updated_at timestamptz, me boolean)
+language sql security definer set search_path = public as $$
+  select p.name, p.summary, p.updated_at, p.owner = upbek_owner(p_token)
+  from upbek_pair p
+  where p.pair = p_pair and exists (select 1 from upbek_pair m where m.pair = p_pair and m.owner = upbek_owner(p_token))
+$$;
+
+create or replace function public.pair_leave(p_token text, p_pair text)
+returns void language sql security definer set search_path = public as $$
+  delete from upbek_nudge where pair = p_pair and (to_owner = upbek_owner(p_token) or from_owner = upbek_owner(p_token));
+  delete from upbek_pair where pair = p_pair and owner = upbek_owner(p_token);
+$$;
+
+create or replace function public.nudge_send(p_token text, p_pair text, p_kind text)
+returns json language plpgsql security definer set search_path = public as $$
+declare o text := upbek_owner(p_token); t text; n text;
+begin
+  if p_kind not in ('water', 'food', 'move', 'sleep', 'proud', 'love') then raise exception 'bad kind'; end if;
+  select name into n from upbek_pair where pair = p_pair and owner = o;
+  if n is null then raise exception 'not in pair'; end if;
+  select owner into t from upbek_pair where pair = p_pair and owner <> o limit 1;
+  if t is null then raise exception 'no partner'; end if;
+  if (select count(*) from upbek_nudge where from_owner = o and created_at > now() - interval '1 day') >= 30 then raise exception 'too many'; end if;
+  insert into upbek_nudge (pair, from_owner, to_owner, from_name, kind) values (p_pair, o, t, n, p_kind);
+  return json_build_object('ok', true);
+end $$;
+
+create or replace function public.nudge_pull(p_token text, p_pair text)
+returns table (from_name text, kind text, created_at timestamptz)
+language plpgsql security definer set search_path = public as $$
+declare o text := upbek_owner(p_token);
+begin
+  return query select x.from_name, x.kind, x.created_at from upbek_nudge x where x.to_owner = o and x.pair = p_pair order by x.id;
+  delete from upbek_nudge where to_owner = o and pair = p_pair;
+end $$;
+
+revoke all on function public.pair_join(text, text, text, jsonb) from public;
+revoke all on function public.pair_get(text, text) from public;
+revoke all on function public.pair_leave(text, text) from public;
+revoke all on function public.nudge_send(text, text, text) from public;
+revoke all on function public.nudge_pull(text, text) from public;
+grant execute on function public.pair_join(text, text, text, jsonb) to anon, authenticated;
+grant execute on function public.pair_get(text, text) to anon, authenticated;
+grant execute on function public.pair_leave(text, text) to anon, authenticated;
+grant execute on function public.nudge_send(text, text, text) to anon, authenticated;
+grant execute on function public.nudge_pull(text, text) to anon, authenticated;

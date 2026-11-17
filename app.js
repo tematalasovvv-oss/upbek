@@ -53,7 +53,7 @@ function wholeWord(s, w) {
 
 /* ---------- данные ---------- */
 function fresh() {
-  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], loans: [], bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
+  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], loans: [], cycle: null, pair: null, pairDone: {}, bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
 }
 function load() {
   try { const raw = localStorage.getItem(STORE); if (raw) return Object.assign(fresh(), JSON.parse(raw)); } catch (e) { /* пусто */ }
@@ -228,6 +228,7 @@ function game() {
     if (q[1].done) protDays++;
   }
   xp += sum(S.coach || [], (c) => (c.goals || []).filter((x) => x.done).length * 30);
+  xp += Object.keys(S.pairDone || {}).length * 50; // парные квесты
   // серия
   let streak = 0; const t = new Date(); t.setHours(12, 0, 0, 0);
   if (!b[dayKey(t)]) t.setDate(t.getDate() - 1);
@@ -483,6 +484,7 @@ function renderHero() {
   </div>
 
   ${promptCards()}
+  ${typeof pairCards === 'function' ? pairCards() : ''}
   ${typeof loanPrompts === 'function' ? loanPrompts() : ''}
   ${typeof coachCard === 'function' ? coachCard() : ''}
 
@@ -544,6 +546,8 @@ function renderBody() {
   </div>
   ${isToday ? '' : `<div class="hint" style="margin-top:8px">Записи добавятся на ${dayLabel(key).toLowerCase()}</div>`}
 
+  ${typeof cycleCard === 'function' ? cycleCard() : ''}
+
   <h2>Съедено <small>${fmt(sum(food, foodKcal))} ккал · ${Math.round(sum(food, foodProt))} г белка</small></h2>
   <div class="card list">
     ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${esc(e.ic || '🍽️')}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.hyd ? ` · 💧 ${fmt(e.hyd * e.qty)} мл` : ''}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
@@ -601,6 +605,7 @@ function openHub() {
     <button class="big3" data-a="money" data-v="exp"><span class="ic">💰</span><span><b>Деньги</b><small>расход · доход · перевод</small></span></button>
     <button class="big3" data-a="foodSheet" data-v="food"><span class="ic">🍗</span><span><b>Еда</b><small>что съел · вода · шаги · вес · сон</small></span></button>
     <button class="big3" data-a="sport"><span class="ic">🏃</span><span><b>Спорт</b><small>прогулка · фитнес</small></span></button>
+    ${typeof cycleOn === 'function' && cycleOn() ? '<button class="big3" data-a="cyDay" data-v="' + dayKey() + '"><span class="ic">🌸</span><span><b>Цикл</b><small>выделения · симптомы · настроение</small></span></button>' : ''}
   </div>`);
 }
 const FS_TABS = [['food', '🍽️ Еда'], ['water', '💧 Вода'], ['steps', '👣 Шаги'], ['weight', '⚖️ Вес'], ['sleep', '😴 Сон']];
@@ -1144,6 +1149,7 @@ function renderMe() {
   <h2>⚙️ Настройки</h2>
   <div class="card list">
     <button class="item" data-a="profile"><span class="ii">👤</span><span class="grow"><div class="it">Настройки профиля</div><div class="is">Вес, рост, цель, свои нормы</div></span><span>›</span></button>
+    <button class="item" data-a="pairOpen"><span class="ii">💑</span><span class="grow"><div class="it">Пара</div><div class="is">${S.pair && S.pair.mate ? 'Вы с ' + esc(S.pair.mate.name) + ' · дуэль и квесты' : S.pair && S.pair.code ? 'Ждём партнёра · код ' + esc(S.pair.code) : 'Дуэль недели, парные квесты, подбодрить'}</div></span><span>›</span></button>
     <button class="item" data-a="aiSheet"><span class="ii">✨</span><span class="grow"><div class="it">ИИ (Gemini)</div><div class="is">${typeof aiReady === 'function' && aiReady() ? 'Подключён · разборы недели' : 'Не подключён'}</div></span><span>›</span></button>
     <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${g.ach.length} из ${ACH.length}</div></span><span>›</span></button>
     <button class="item" data-a="themeSheet"><span class="ii">🎨</span><span class="grow"><div class="it">Тема оформления</div><div class="is">${themeName}</div></span><span>›</span></button>
@@ -1151,7 +1157,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.5</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.6</p>
   `;
 }
 function openAchSheet() {
@@ -1503,7 +1509,7 @@ const A = {
     const n = S.food.length + S.tx.length + S.act.length + S.sleep.length + S.weights.length;
     if (!(await ask(`Удалить все записи (${n}): еду, траты, спорт, сон и вес?<br>Профиль, счета и их начальные балансы останутся. <b>Отменить нельзя.</b>`, 'Удалить', 'Отмена'))) return;
     const w = S.profile.weight;
-    S.food = []; S.tx = []; S.act = []; S.sleep = []; S.water = []; S.bedMarks = []; S.coach = []; S.usage = {}; S.seenAch = []; S.lastLevel = 1;
+    S.food = []; S.tx = []; S.act = []; S.sleep = []; S.water = []; S.pairDone = {}; if (S.cycle) { S.cycle.days = {}; S.cycle.periods = []; } S.bedMarks = []; S.coach = []; S.usage = {}; S.seenAch = []; S.lastLevel = 1;
     S.weights = [{ id: uid(), t: Date.now(), kg: w }]; S.profile.startWeight = w;
     save(); render(); toast('🧹 Записи удалены. Начинаем с чистого листа!');
   },
