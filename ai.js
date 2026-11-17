@@ -381,7 +381,7 @@ function weekData(w) {
   const wIn = S.weights.filter((x) => x.t >= w.from && x.t < w.to).sort((a, c) => a.t - c.t);
   return {
     profile: { sex: S.profile.sex === 'f' ? 'ж' : 'м', age: S.profile.age, height: S.profile.height, weight: round1(weightProgress().cur), goal: GOALS[S.profile.goal].n },
-    targets: { kcal: t.kcal, protein: t.protein, fat: t.fat, carbs: t.carbs },
+    targets: { kcal: t.kcal, protein: t.protein, fat: t.fat, carbs: t.carbs, water_ml: t.water },
     days,
     weight: { start_of_week: wIn[0] ? wIn[0].kg : null, end_of_week: wIn.length ? wIn[wIn.length - 1].kg : null, since_start: weightProgress().delta },
     money: {
@@ -399,6 +399,7 @@ const COACH_SCHEMA = {
     score: { type: 'NUMBER' }, title: { type: 'STRING' }, summary: { type: 'STRING' },
     food: { type: 'ARRAY', items: { type: 'STRING' } }, money: { type: 'ARRAY', items: { type: 'STRING' } }, body: { type: 'ARRAY', items: { type: 'STRING' } },
     goals: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, why: { type: 'STRING' } }, required: ['title'] } },
+    adjust: { type: 'ARRAY', items: { type: 'OBJECT', properties: { param: { type: 'STRING', enum: ['kcal', 'protein', 'water'] }, value: { type: 'NUMBER' }, why: { type: 'STRING' } }, required: ['param', 'value', 'why'] } },
   },
   required: ['score', 'summary', 'food', 'money', 'body', 'goals'],
 };
@@ -420,7 +421,8 @@ async function coachRun(force) {
 - food: 2–4 конкретных совета по рациону (что добавить или убрать, какие доступные в Кыргызстане продукты, сколько добрать белка/ккал в день);
 - money: 2–4 совета по бюджету (на что ушло больше всего, где реально сэкономить и сколько сом, сравни с прошлой неделей);
 - body: 1–3 совета про сон, шаги и тренировки;
-- goals: ровно 3 цели на эту неделю — измеримые и достижимые (например «5 дней из 7 добрать 100 г белка»).
+- goals: ровно 3 цели на эту неделю — измеримые и достижимые (например «5 дней из 7 добрать 100 г белка»);
+- adjust: 0–3 предложения поменять дневные нормы (param: kcal — калории, protein — белок в граммах, water — вода в мл; value — новое значение в день; why — коротко почему). Предлагай, только если данные это подтверждают: например, вес не растёт при наборе массы — поднять kcal на 150–250; воды стабильно мало — скорректировать норму. Текущие нормы — в targets.
 Без медицинских диагнозов. Если данных мало — начни с совета чаще записывать.
 Данные: ${JSON.stringify(data)}`;
     const r = await aiCall([{ text: prompt }], COACH_SCHEMA);
@@ -455,6 +457,7 @@ function openCoach() {
   openSheet(() => `${sheetHead('🧠 ' + esc(c.title || 'Разбор недели'))}
     <div class="row"><span class="coach-score">${Math.round(c.score)}<small>/10</small></span><div class="grow">${esc(c.summary)}</div></div>
     ${sec('🍗', 'Питание', c.food)}${sec('💰', 'Бюджет', c.money)}${sec('😴', 'Сон и спорт', c.body)}
+    ${(c.adjust || []).length ? `<h3 style="font-size:15px;margin:16px 0 6px">📈 Предлагаю поменять нормы</h3><div class="card list">${c.adjust.map((a, i) => { const lab = { kcal: ['🍗', 'Калории', 'ккал', targets().kcal], protein: ['🥩', 'Белок', 'г', targets().protein], water: ['💧', 'Вода', 'мл', targets().water] }[a.param] || ['⚙️', a.param, '', 0]; const applied = Math.round(lab[3]) === Math.round(a.value); return `<div class="item"><span class="ii">${lab[0]}</span><span class="grow"><div class="it">${lab[1]}: ${fmt(lab[3])} → <b class="gold">${fmt(a.value)} ${lab[2]}</b></div><div class="is" style="white-space:normal">${esc(a.why)}</div></span>${applied ? '<span class="green">✓</span>' : `<button class="btn gold sm" data-a="coachApply" data-v="${i}">Применить</button>`}</div>`; }).join('')}</div>` : ''}
     <h3 style="font-size:15px;margin:16px 0 6px">🎯 Цели на неделю <small class="dim">+30 XP за каждую</small></h3>
     <div class="card list">${c.goals.map((g, i) => `<button class="item" data-a="coachGoal" data-v="${i}"><span class="ii">${g.done ? '✅' : '⬜'}</span><span class="grow"><div class="it" style="white-space:normal">${esc(g.title)}</div>${g.why ? `<div class="is" style="white-space:normal">${esc(g.why)}</div>` : ''}</span></button>`).join('')}</div>
     <div class="dim" style="margin-top:10px">Разбор от ${new Date(c.at).toLocaleDateString('ru-RU')} · советы ИИ, не медицинские рекомендации</div>
@@ -479,6 +482,13 @@ Object.assign(A, {
     act(() => S.tx.push(...add), `📥 Добавлено ${add.length} операций`, () => act(() => { S.tx = S.tx.filter((x) => !ids.includes(x.id)); }, 'Отменено'));
   },
   coachOpen: openCoach,
+  coachApply: (el) => {
+    const c = lastCoach(); const a = c && (c.adjust || [])[+el.dataset.v]; if (!a) return;
+    const key = { kcal: 'kcalOverride', protein: 'proteinOverride', water: 'waterOverride' }[a.param]; if (!key) return;
+    const v = Math.round(+a.value); if (!(v > 0)) return;
+    act(() => { S.profile[key] = v; }, `📈 Новая норма: ${fmt(v)} ${a.param === 'kcal' ? 'ккал' : a.param === 'protein' ? 'г белка' : 'мл воды'}`);
+    refreshSheet();
+  },
   coachNow: async () => { closeSheet(); await coachRun(true); if (lastCoach()) openCoach(); },
   coachGoal: (el) => {
     const c = lastCoach(); const g = c.goals[+el.dataset.v];

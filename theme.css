@@ -205,3 +205,46 @@ textarea { resize: none; }
 .sched .nx { background: rgba(246, 196, 83, .12); font-weight: 700; }
 .checkrow { display: flex; align-items: center; gap: 10px; font-size: 14px; margin: 6px 0; }
 .checkrow input { width: 20px; height: 20px; }
+
+/* =====================================================================
+   ТЕМА «ЖЕНСТВЕННАЯ» — светлая, бело-розовая, спокойная
+   ===================================================================== */
+[data-theme="soft"] {
+  color-scheme: light;
+  --bg: #fff8fa; --bg2: #fcedf2; --card: #ffffff; --card2: #fbe6ee; --line: #f0d4de;
+  --text: #3b2a32; --muted: #8b6f7b; --dim: #b29aa5;
+  --gold: #d9638a; --gold2: #f2a3bb; --violet: #c27a9c; --green: #3aa57e; --red: #df5f7d; --blue: #67a3d6; --orange: #e5955a;
+}
+[data-theme="soft"] body { background: radial-gradient(900px 420px at 50% -160px, #ffe1ea 0%, transparent 65%), var(--bg); }
+[data-theme="soft"] .card { background: var(--card); box-shadow: 0 4px 18px rgba(217, 99, 138, .07); }
+[data-theme="soft"] .char { background: linear-gradient(160deg, #ffffff 0%, #fff0f5 100%); border-color: #f2cfdb; box-shadow: 0 10px 30px rgba(217, 99, 138, .12); }
+[data-theme="soft"] .avatar { background: linear-gradient(135deg, #ffe4ec, #fff5f8); border-color: var(--gold); box-shadow: 0 0 18px rgba(217, 99, 138, .18); }
+[data-theme="soft"] .lvl-badge { color: #fff; border-color: var(--bg); }
+[data-theme="soft"] .bar { background: #f8e3ea; border-color: #f0d4de; }
+[data-theme="soft"] .bar > i { background: linear-gradient(90deg, #c27a9c, #e6a3c0); }
+[data-theme="soft"] .bar.gold > i { background: linear-gradient(90deg, #d9638a, #f2a3bb); }
+[data-theme="soft"] .ring circle:first-of-type { stroke: #f8e3ea; }
+[data-theme="soft"] .ring circle:last-of-type { stroke: var(--gold); }
+[data-theme="soft"] .btn { color: #fff; }
+[data-theme="soft"] .btn.gold, [data-theme="soft"] .fab, [data-theme="soft"] .mic { background: linear-gradient(135deg, #d9638a, #f0a0b9); color: #fff; }
+[data-theme="soft"] .btn.ghost { background: var(--card); color: var(--text); }
+[data-theme="soft"] .fab { box-shadow: 0 8px 22px rgba(217, 99, 138, .35), 0 0 0 4px var(--bg); }
+[data-theme="soft"] .tabbar { background: rgba(255, 248, 250, .92); }
+[data-theme="soft"] .chip.on { background: rgba(217, 99, 138, .12); border-color: var(--gold); }
+[data-theme="soft"] .cat.on, [data-theme="soft"] .opt.on { background: rgba(217, 99, 138, .08); }
+[data-theme="soft"] .seg button.on { background: var(--card); box-shadow: 0 1px 4px rgba(0, 0, 0, .06); }
+[data-theme="soft"] .pill { background: rgba(217, 99, 138, .06); }
+[data-theme="soft"] #toast { background: #fff; color: var(--text); border-color: #f0d4de; box-shadow: 0 10px 30px rgba(217, 99, 138, .2); }
+[data-theme="soft"] .backdrop { background: rgba(80, 40, 55, .25); }
+[data-theme="soft"] .levelup { background: radial-gradient(circle at center, rgba(242, 163, 187, .35), rgba(255, 248, 250, .92) 60%); }
+[data-theme="soft"] .chart polyline { stroke: var(--gold); }
+[data-theme="soft"] .chart circle { fill: var(--gold); }
+[data-theme="soft"] .prompt { background: linear-gradient(180deg, #fff3f7, #ffffff); border-color: #f2c4d1; }
+[data-theme="soft"] .coach-card, [data-theme="soft"] .rating-card { background: linear-gradient(135deg, #fff0f5, #ffffff); }
+[data-theme="soft"] .coach-score { background: #fff; }
+[data-theme="soft"] .tile .ic, [data-theme="soft"] .qa .ic { filter: saturate(.9); }
+
+/* ---------- v3: рейтинг ---------- */
+.rating-card { display: block; width: 100%; text-align: left; border-color: rgba(246, 196, 83, .45); }
+.me-row { background: rgba(246, 196, 83, .08); border-radius: 12px; }
+.place { font-size: 18px; font-weight: 800; }

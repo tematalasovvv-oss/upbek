@@ -66,10 +66,11 @@ function save(noCloud) {
 const THEMES = [
   { id: 'classic', n: 'Классика', d: 'Тёмная фэнтези-РПГ', sw: ['#0d1020', '#8b6cff', '#f6c453'] },
   { id: 'comic', n: 'Комикс', d: 'Мультивселенная: полутона, неон, «БАМ!»', sw: ['#0b0614', '#ff2e88', '#00e5ff', '#ffe14d'] },
+  { id: 'soft', n: 'Женственная', d: 'Светлая, бело-розовая, мягкая', sw: ['#fff8fa', '#f2c4d1', '#d9638a', '#c9a27e'] },
 ];
 function applyTheme(id) {
   document.documentElement.dataset.theme = id;
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = id === 'comic' ? '#0b0614' : '#0d1020';
+  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = id === 'comic' ? '#0b0614' : id === 'soft' ? '#fff8fa' : '#0d1020';
 }
 const UI = { tab: 'hero', foodDay: 0, allFoods: false, money: null, sheetFn: null, ob: { step: 1, d: {}, banks: { mbank: { on: true, bal: '' } }, main: 'mbank' } };
 
@@ -82,10 +83,11 @@ function targets(p = S.profile) {
   const protein = +p.proteinOverride || Math.round(p.weight * g.prot);
   const fat = Math.round(p.weight * 1.0);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  const water = Math.round((p.weight * 33) / 50) * 50;
+  const water = +p.waterOverride || Math.round((p.weight * 33) / 50) * 50;
   return { bmr: Math.round(bmr), base: Math.round(base), kcal, protein, fat, carbs, water };
 }
 const foodKcal = (e) => e.k * e.qty;
+const glasses = (ml) => round1((ml || 0) / 250).toLocaleString('ru-RU');
 const waterNeed = (st) => targets().water + Math.round(((st && st.mins) || 0) * 8 / 50) * 50;
 function withDate(t, ymd) { const d = new Date(t || Date.now()); const [y, m, dd] = ymd.split('-').map(Number); d.setFullYear(y, m - 1, dd); return d.getTime(); }
 const foodProt = (e) => e.p * e.qty;
@@ -362,7 +364,7 @@ function todayCard(d) {
     <div class="grow">
       <div class="mini"><div class="row"><span>🥩 Белок</span><b class="num">${Math.round(st.prot)} / ${t.protein} г</b></div>${bar(st.prot, t.protein, 'red')}
         <div class="macros"><span>Жиры <b class="num">${Math.round(st.fat)}</b>/${t.fat}</span><span>Углеводы <b class="num">${Math.round(st.carb)}</b>/${t.carbs}</span></div></div>
-      <div class="mini"><div class="row"><span>💧 Вода</span><b class="num">${fmt(st.water)} / ${fmt(waterNeed(st))} мл</b></div>${bar(st.water, waterNeed(st), 'blue')}</div>
+      <div class="mini"><div class="row"><span>💧 Вода · ${glasses(st.water)} ст.</span><b class="num">${fmt(st.water)} / ${fmt(waterNeed(st))} мл</b></div>${bar(st.water, waterNeed(st), 'blue')}</div>
       <div class="mini"><div class="row"><span>🔥 Потрачено</span><b class="num">${fmt(spent)} ккал</b></div>${bar(st.actK, 600, 'blue')}<div class="dim" style="margin-top:3px">организм ${fmt(t.base)} + спорт ${fmt(st.actK)}</div></div>
       <div class="mini" style="margin:0"><div class="row"><span>⚖️ Баланс</span><b class="num ${balCls}">${balance > 0 ? '+' : ''}${fmt(balance)} ккал</b></div></div>
     </div>
@@ -414,12 +416,6 @@ function promptCards() {
       <div class="row"><span style="font-size:30px">☀️</span><div class="grow"><b>Доброе утро! Так спал?</b><div class="dim">😴 ${hhmm(s.bed)} → ${hhmm(s.wake)} · ${fmtH(sleepH(s))}</div></div><button class="x" data-a="slSkip">✕</button></div>
       <div class="row" style="margin-top:10px"><button class="btn gold" data-a="slQuick">✓ Да</button><button class="btn ghost" data-a="foodSheet" data-v="sleep">Поправить</button></div></div>`;
   }
-  const rd = recDue();
-  if (rd && S.accounts.length) {
-    out += `<div class="card prompt">
-      <div class="row"><span style="font-size:30px">🧮</span><div class="grow"><b>${rd} сверка</b><div class="dim">Открой банк и впиши балансы — 20 секунд. Всё, что забыл записать, посчитается само.</div></div><button class="x" data-a="recSkip">✕</button></div>
-      <button class="btn gold" style="margin-top:10px" data-a="rec">Сверить балансы</button></div>`;
-  }
   return out;
 }
 
@@ -440,7 +436,7 @@ function renderHero() {
   const q = questsOf(g.today);
   const qDone = q.filter((x) => x.done).length;
   const unsorted = S.tx.filter(isUnsorted).length;
-  const achs = ACH.filter((a) => g.ach.includes(a[0]));
+  const achs = ACH.filter((a) => g.ach.includes(a[0])).sort((a, b) => S.seenAch.indexOf(b[0]) - S.seenAch.indexOf(a[0]));
   const mainAcc = accById(S.main) || S.accounts[0];
   return `
   <div class="char">
@@ -456,7 +452,7 @@ function renderHero() {
     <div class="attrs">
       ${attr('❤️', 'Сытость', hp, 'red', `${fmt(st.eaten)} / ${fmt(need)} ккал`)}
       ${attr('⚡', 'Энергия', energyOf(sl), 'gold', sh == null ? 'запиши сон' : 'сон ' + fmtH(sh))}
-      ${attr('💧', 'Вода', Math.round((st.water / waterNeed(st)) * 100), 'blue', `${fmt(st.water)} / ${fmt(waterNeed(st))} мл · нажми +`).replace('<div class="attr">', '<div class="attr tap" data-a="foodSheet" data-v="water">')}
+      ${attr('💧', 'Вода', Math.round((st.water / waterNeed(st)) * 100), 'blue', `${glasses(st.water)} из ${glasses(waterNeed(st))} стаканов · нажми +`).replace('<div class="attr">', '<div class="attr tap" data-a="foodSheet" data-v="water">')}
       ${attr('💪', 'Форма', form, 'green', `${weekMins} / 150 мин за 7 дней`)}
     </div>
     <div class="char-foot">
@@ -489,7 +485,7 @@ function renderHero() {
 
   <h2>Достижения <small>${achs.length} / ${ACH.length}</small></h2>
   ${achs.length ? `<div class="chips">${achs.map((a) => `<span class="chip on">${a[1]} ${esc(achName(a, g))}</span>`).join('')}</div>` : '<div class="dim">Сделай первую запись — и получишь первое достижение 🌱</div>'}
-  <button class="btn ghost sm" style="margin-top:10px" data-a="tab" data-v="me">Все достижения ›</button>
+  <button class="btn ghost sm" style="margin-top:10px" data-a="achSheet">Все достижения ›</button>
   `;
 }
 
@@ -604,7 +600,7 @@ function renderFoodSheet() {
   if (UI.fs === 'water') {
     const d = buckets()[viewDayKey()] || emptyDay(); const st = dayStats(d); const need = waterNeed(st);
     return `${head}
-    <div class="total" style="margin-bottom:8px"><div class="tv num">💧 ${fmt(st.water)} <small style="font-size:16px" class="muted">/ ${fmt(need)} мл</small></div></div>
+    <div class="total" style="margin-bottom:8px"><div class="tv num">💧 ${fmt(st.water)} <small style="font-size:16px" class="muted">/ ${fmt(need)} мл</small></div><div class="tl">🥛 ≈ ${glasses(st.water)} из ${glasses(need)} стаканов по 250 мл</div></div>
     ${bar(st.water, need, 'blue')}
     <div class="split"><div><span>💧 Чистая вода</span><b class="num">${fmt(st.waterPure)} мл</b></div><div><span>☕ Напитки и супы</span><b class="num">${fmt(st.waterFood)} мл</b></div></div>
     <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:14px">${[[250, '🥛', 'стакан'], [330, '🥤', '0,33 л'], [500, '🍶', '0,5 л'], [1000, '💧', '1 литр']].map(([ml, ic, l]) => `<button class="tile" data-a="waterAdd" data-v="${ml}"><span class="ic">${ic}</span><span class="tn">+${ml}</span><span class="tk">${l}</span></button>`).join('')}</div>
@@ -787,7 +783,7 @@ function debtCard() {
   const owed = sum(list, (r) => Math.max(0, r.gave - r.back));
   return `<h2>🤝 Долги <small>${owed ? 'тебе должны ' + som(owed) : 'все закрыты ✓'}</small></h2>
   <div class="card list">${list.slice(0, 12).map((r) => { const rest = r.gave - r.back; const st = rest > 0.5 ? `<b class="gold num">должен ${fmt(rest)}</b>` : rest < -0.5 ? `<b class="green num">+${fmt(-rest)} прибыль</b>` : '<b class="green">✓ закрыт</b>'; return `<div class="item"><span class="ii">🤝</span><span class="grow"><div class="it">${esc(r.name)}</div><div class="is">дал ${fmt(r.gave)} · вернули ${fmt(r.back)}</div></span>${st}</div>`; }).join('')}</div>
-  <div class="note">«Дал в долг» и «вернули долг» гасят друг друга и не считаются тратами и доходами. Если вернули больше — разница идёт в «Пришло» как прибыль. Закрытые долги исчезают отсюда с начала следующего месяца, но остаются в хронологии.</div>`;
+`;
 }
 function loansSummary() {
   const m = {};
@@ -1105,45 +1101,46 @@ function saveSleep(s) {
 
 /* ---------- Ещё: профиль, счета, данные ---------- */
 function renderMe() {
-  const g = game(), p = S.profile, t = targets(), bal = g.bal;
+  const g = game(), p = S.profile, t = targets();
+  const themeName = (THEMES.find((x) => x.id === (document.documentElement.dataset.theme || 'classic')) || THEMES[0]).n;
   return `
   <h1>Ещё</h1>
   <div class="card">
-    <div class="row between"><div class="row"><div class="avatar" style="width:52px;height:52px;font-size:28px;border-radius:16px">${rankOf(g.L).ic}</div><div><b style="font-size:17px">${esc(p.name)}</b><div class="dim">${p.age} лет · ${p.height} см · ${round1(weightProgress().cur)} кг</div></div></div>
-    <button class="btn ghost sm" data-a="profile">Изменить</button></div>
+    <div class="row"><div class="avatar" style="width:52px;height:52px;font-size:28px;border-radius:16px">${rankOf(g.L).ic}</div><div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="dim">${p.age} лет · ${p.height} см · ${round1(weightProgress().cur)} кг · ${GOALS[p.goal].n}</div></div></div>
     <div class="split">
-      <div><span>Норма калорий</span><b class="num">${fmt(t.kcal)} ккал</b></div>
-      <div><span>Норма белка</span><b class="num">${t.protein} г</b></div>
+      <div><span>Калории</span><b class="num">${fmt(t.kcal)}</b></div>
+      <div><span>Белок · Вода</span><b class="num">${t.protein} г · ${round1(t.water / 1000)} л</b></div>
     </div>
-    <div class="dim" style="margin-top:8px">Цель: ${GOALS[p.goal].n}. Обмен веществ ${fmt(t.bmr)} ккал, с образом жизни ${fmt(t.base)}. Спорт добавляется к норме автоматически.</div>
   </div>
 
-  <h2>Достижения <small>${g.ach.length} / ${ACH.length}</small></h2>
-  <div class="achs">${ACH.map((a) => `<div class="ach ${g.ach.includes(a[0]) ? '' : 'lock'}"><span class="ic">${a[1]}</span><span>${esc(achName(a, g))}</span></div>`).join('')}</div>
-
-  <h2>Счета</h2>
-  <div class="card list">
-    ${S.accounts.map((a) => `<button class="item" data-a="acc" data-v="${a.id}"><span class="ii"><i class="dot" style="background:${a.color};width:12px;height:12px"></i></span><span class="grow"><div class="it">${esc(a.name)} ${a.id === S.main ? '<span class="gold">★</span>' : ''}</div></span><span class="iv">${fmt(bal[a.id])}</span></button>`).join('')}
-    <button class="item" data-a="addAcc"><span class="ii">＋</span><span class="grow it">Добавить счёт</span></button>
-  </div>
-
-  <h2>🎨 Тема</h2>
-  <div class="themes">${THEMES.map((t) => `<button class="opt theme-opt ${(document.documentElement.dataset.theme || 'classic') === t.id ? 'on' : ''}" data-a="theme" data-v="${t.id}"><span class="sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span><b>${t.n}</b><span>${t.d}</span></button>`).join('')}</div>
+  ${typeof ratingPreview === 'function' ? ratingPreview() : ''}
 
   ${typeof aiSection === 'function' ? aiSection() : ''}
 
-  ${typeof cloudSection === 'function' ? cloudSection() : ''}
-
-  <h2>Данные</h2>
-  <div class="card">
-    <div class="row"><button class="btn ghost" data-a="export">📤 Резервная копия</button><button class="btn ghost" data-a="import">📥 Загрузить</button></div>
-    <div class="note">Раз в неделю сохраняй копию (в «Файлы» или Telegram «Избранное»): если удалить иконку или почистить Safari, данные пропадут.</div>
-    <button class="btn ghost" style="margin-top:10px" data-a="appUpdate">🔄 Обновить приложение</button>
-    <button class="btn danger" style="margin-top:10px" data-a="clearRecords">🧹 Очистить записи (профиль и счета останутся)</button>
-    <button class="btn danger" style="margin-top:8px" data-a="reset">Стереть всё и начать заново</button>
+  <h2>⚙️ Настройки</h2>
+  <div class="card list">
+    <button class="item" data-a="profile"><span class="ii">👤</span><span class="grow"><div class="it">Настройки профиля</div><div class="is">Вес, рост, цель, свои нормы</div></span><span>›</span></button>
+    <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${g.ach.length} из ${ACH.length}</div></span><span>›</span></button>
+    <button class="item" data-a="themeSheet"><span class="ii">🎨</span><span class="grow"><div class="it">Тема оформления</div><div class="is">${themeName}</div></span><span>›</span></button>
+    <button class="item" data-a="backupSheet"><span class="ii">💾</span><span class="grow"><div class="it">Резервное копирование</div><div class="is">Облако, код восстановления, файл</div></span><span>›</span></button>
+    <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
+    <button class="item" data-a="clearRecords"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить записи</div><div class="is">Профиль, счета и кредиты останутся</div></span></button>
+    <button class="item" data-a="reset"><span class="ii">🗑️</span><span class="grow"><div class="it red">Стереть всё и начать заново</div></span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v2.12 · ${S.food.length + S.tx.length + S.act.length} записей</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.0</p>
   `;
+}
+function openAchSheet() {
+  const g = game();
+  const order = (id) => { const i = S.seenAch.indexOf(id); return i < 0 ? -1 : i; };
+  const list = [...ACH].sort((a, b) => order(b[0]) - order(a[0]));
+  openSheet(() => `${sheetHead(`🏆 Достижения · ${g.ach.length} / ${ACH.length}`)}
+  <div class="achs">${list.map((a) => `<div class="ach ${g.ach.includes(a[0]) ? '' : 'lock'}"><span class="ic">${a[1]}</span><span>${esc(achName(a, g))}</span></div>`).join('')}</div>
+  <div class="hint" style="margin-top:10px">Сначала — последние полученные</div>`);
+}
+function openThemeSheet() {
+  openSheet(() => `${sheetHead('🎨 Тема оформления')}
+  <div class="themes">${THEMES.map((t) => `<button class="opt theme-opt ${(document.documentElement.dataset.theme || 'classic') === t.id ? 'on' : ''}" data-a="theme" data-v="${t.id}"><span class="sw">${t.sw.map((c) => `<i style="background:${c}"></i>`).join('')}</span><b>${t.n}</b><span>${t.d}</span></button>`).join('')}</div>`);
 }
 function profileForm(p) {
   return `
@@ -1162,7 +1159,7 @@ function goalForm(p) {
 function readProfileInputs(p) {
   const n = (id) => { const el = $('#' + id); return el ? parseFloat(String(el.value).replace(',', '.')) : NaN; };
   if ($('#pName')) p.name = $('#pName').value.trim();
-  ['pAge:age', 'pH:height', 'pW:weight', 'pK:kcalOverride', 'pP:proteinOverride'].forEach((s) => {
+  ['pAge:age', 'pH:height', 'pW:weight', 'pK:kcalOverride', 'pP:proteinOverride', 'pWa:waterOverride'].forEach((s) => {
     const [id, key] = s.split(':'); if (!$('#' + id)) return;
     const v = n(id); p[key] = isNaN(v) ? (key.endsWith('Override') ? null : p[key]) : v;
   });
@@ -1170,12 +1167,13 @@ function readProfileInputs(p) {
 function openProfile() {
   UI.pd = JSON.parse(JSON.stringify(S.profile));
   openSheet(() => {
-    const p = UI.pd; const t = targets({ ...p, kcalOverride: null, proteinOverride: null });
+    const p = UI.pd; const t = targets({ ...p, kcalOverride: null, proteinOverride: null, waterOverride: null });
     return `${sheetHead('Профиль героя')}${profileForm(p)}${goalForm(p)}
     <div class="grid2">
       <div class="field"><label>Своя норма ккал</label><input id="pK" inputmode="numeric" value="${p.kcalOverride || ''}" placeholder="авто: ${t.kcal}"></div>
       <div class="field"><label>Своя норма белка, г</label><input id="pP" inputmode="numeric" value="${p.proteinOverride || ''}" placeholder="авто: ${t.protein}"></div>
     </div>
+    <div class="field"><label>Своя норма воды, мл</label><input id="pWa" inputmode="numeric" value="${p.waterOverride || ''}" placeholder="авто: ${t.water}"></div>
     <button class="btn gold" data-a="pSave">Сохранить</button>`;
   });
 }
@@ -1439,11 +1437,14 @@ const A = {
     progress(game());
   },
 
+  achSheet: openAchSheet,
+  themeSheet: openThemeSheet,
+  backupSheet: () => openBackupSheet(),
   theme: (el) => {
     const id = el.dataset.v;
     try { localStorage.setItem('upbek.theme', id); } catch (e) { /* ок */ }
-    applyTheme(id); render();
-    toast(id === 'comic' ? '💥 БАМ! Тема «Комикс»' : '⚔️ Тема «Классика»');
+    applyTheme(id); render(); refreshSheet();
+    toast(id === 'comic' ? '💥 БАМ! Тема «Комикс»' : id === 'soft' ? '🌸 Тема «Женственная»' : '⚔️ Тема «Классика»');
   },
 
   // данные

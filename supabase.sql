@@ -81,3 +81,59 @@ grant execute on function public.pull_events(text) to anon, authenticated;
 grant execute on function public.ack_events(text, bigint[]) to anon, authenticated;
 grant execute on function public.save_state(text, jsonb) to anon, authenticated;
 grant execute on function public.load_state(text) to anon, authenticated;
+
+-- ===== Рейтинг друзей (v3): только имя, уровень, серия и проценты, без финансов =====
+create table if not exists public.upbek_board (
+  owner text not null,
+  grp text not null,
+  name text not null,
+  avatar text,
+  level int,
+  streak int,
+  s7 numeric,
+  s30 numeric,
+  today numeric,
+  detail jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (owner, grp)
+);
+alter table public.upbek_board enable row level security;
+revoke all on public.upbek_board from anon, authenticated;
+
+create or replace function public.board_push(p_token text, p_group text, p_name text, p_avatar text, p_level int, p_streak int, p_s7 numeric, p_s30 numeric, p_today numeric, p_detail jsonb)
+returns json language plpgsql security definer set search_path = public as $$
+declare o text := upbek_owner(p_token);
+begin
+  if p_group !~ '^[A-Z0-9]{6}$' then raise exception 'bad group'; end if;
+  if length(coalesce(p_name, '')) < 1 or length(p_name) > 24 then raise exception 'bad name'; end if;
+  if octet_length(coalesce(p_detail::text, '')) > 4000 then raise exception 'too big'; end if;
+  if (select count(*) from upbek_board where grp = p_group and owner <> o) >= 50 then raise exception 'group full'; end if;
+  insert into upbek_board (owner, grp, name, avatar, level, streak, s7, s30, today, detail, updated_at)
+  values (o, p_group, p_name, left(p_avatar, 8), p_level, p_streak, p_s7, p_s30, p_today, p_detail, now())
+  on conflict (owner, grp) do update set name = excluded.name, avatar = excluded.avatar, level = excluded.level, streak = excluded.streak,
+    s7 = excluded.s7, s30 = excluded.s30, today = excluded.today, detail = excluded.detail, updated_at = now();
+  return json_build_object('ok', true);
+end $$;
+
+create or replace function public.board_list(p_token text, p_group text)
+returns table (name text, avatar text, level int, streak int, s7 numeric, s30 numeric, today numeric, detail jsonb, updated_at timestamptz, me boolean)
+language sql security definer set search_path = public as $$
+  select b.name, b.avatar, b.level, b.streak, b.s7, b.s30, b.today, b.detail, b.updated_at, b.owner = upbek_owner(p_token)
+  from upbek_board b
+  where b.grp = p_group
+    and exists (select 1 from upbek_board m where m.grp = p_group and m.owner = upbek_owner(p_token))
+  order by b.s7 desc nulls last
+  limit 50
+$$;
+
+create or replace function public.board_leave(p_token text, p_group text)
+returns void language sql security definer set search_path = public as $$
+  delete from upbek_board where owner = upbek_owner(p_token) and grp = p_group
+$$;
+
+revoke all on function public.board_push(text, text, text, text, int, int, numeric, numeric, numeric, jsonb) from public;
+revoke all on function public.board_list(text, text) from public;
+revoke all on function public.board_leave(text, text) from public;
+grant execute on function public.board_push(text, text, text, text, int, int, numeric, numeric, numeric, jsonb) to anon, authenticated;
+grant execute on function public.board_list(text, text) to anon, authenticated;
+grant execute on function public.board_leave(text, text) to anon, authenticated;

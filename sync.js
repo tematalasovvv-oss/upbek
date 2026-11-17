@@ -143,25 +143,23 @@ async function copyText(text, label) {
   try { await navigator.clipboard.writeText(text); toast(`📋 ${label} скопирован`); }
   catch (e) { prompt('Скопируй вручную:', text); }
 }
-function cloudSection() {
-  if (!cloudReady()) return `<h2>☁️ Облако</h2><div class="card dim">Сервер ещё не подключён.</div>`;
-  const c = S.cloud || {};
-  const st = c.err ? `<span class="red">⚠️ Нет связи: ${esc(c.err)}</span>` : c.lastPush ? `<span class="green">✓ Копия сохранена ${dayLabel(dayKey(c.lastPush)).toLowerCase()} в ${hhmm(c.lastPush)}</span>` : 'Сохраняю…';
-  return `<h2>☁️ Облако и автоматика</h2>
-  <div class="card">
-    <div class="row between"><b>Облачная копия</b><button class="btn ghost sm" data-a="cloudNow">Синхр.</button></div>
-    <div class="dim" style="margin-top:4px">${st}</div>
-    <div class="note">Данные шифруются на телефоне. Без твоего кода их никто не прочитает — даже сервер.</div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn ghost sm" data-a="cloudCode">🔑 Мой код</button>
-      <button class="btn ghost sm" data-a="cloudRestoreAsk">♻️ Восстановить</button>
+function openBackupSheet() {
+  openSheet(() => {
+    const c = S.cloud || {};
+    const st = !cloudReady() ? 'Сервер не подключён' : c.err ? `<span class="red">⚠️ Нет связи: ${esc(c.err)}</span>` : c.lastPush ? `<span class="green">✓ Сохранено ${dayLabel(dayKey(c.lastPush)).toLowerCase()} в ${hhmm(c.lastPush)}</span>` : 'Сохраняю…';
+    return `${sheetHead('💾 Резервное копирование')}
+    <div class="card">
+      <div class="row between"><b>☁️ Облачная копия</b>${cloudReady() ? '<button class="btn ghost sm" data-a="cloudNow">Синхр.</button>' : ''}</div>
+      <div class="dim" style="margin-top:4px">${st}</div>
+      <div class="note">Сохраняется сама после каждого изменения. Данные шифруются на телефоне — без твоего кода их никто не прочитает.</div>
+      ${cloudReady() ? `<div class="row" style="margin-top:10px"><button class="btn ghost sm" data-a="cloudCode">🔑 Мой код</button><button class="btn ghost sm" data-a="cloudRestoreAsk">♻️ Восстановить</button></div>` : ''}
     </div>
-  </div>
-  <div class="card list">
-    <button class="item" data-a="autoHelp" data-v="sleep"><span class="ii">😴</span><span class="grow"><div class="it">Автозапись сна</div><div class="is">Будильник и зарядка сами отмечают сон</div></span><span>›</span></button>
-    <button class="item" data-a="autoHelp" data-v="sms"><span class="ii">📩</span><span class="grow"><div class="it">Траты из SMS банка</div><div class="is">SMS → трата и авто-сверка остатка</div></span><span>›</span></button>
-    <button class="item" data-a="autoHelp" data-v="rem"><span class="ii">⏰</span><span class="grow"><div class="it">Напоминания о сверке</div><div class="is">Уведомление в 9:00 и 21:00</div></span><span>›</span></button>
-  </div>`;
+    <div class="card">
+      <b>📁 Файл-копия</b>
+      <div class="dim" style="margin:4px 0 10px">Можно сохранить в «Файлы» или Telegram</div>
+      <div class="row"><button class="btn ghost" data-a="export">📤 Сохранить</button><button class="btn ghost" data-a="import">📥 Загрузить</button></div>
+    </div>`;
+  });
 }
 function copyRow(label, value, kind) {
   return `<div class="copyrow"><span class="grow"><span class="dim">${label}</span><code>${esc(value)}</code></span><button class="btn ghost sm" data-a="copy" data-k="${kind}">Копировать</button></div>`;
