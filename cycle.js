@@ -92,7 +92,7 @@ function setPeriodDay(k, on) {
 /* ---- карточка на странице «Тело» ---- */
 function cycleCard() {
   if (!S.profile || S.profile.sex !== 'f') return '';
-  if (!CY().on) return `<h2>🌸 Цикл</h2><div class="card"><div class="row"><span style="font-size:28px">🌸</span><div class="grow"><b>Отслеживать цикл</b><div class="dim">Прогноз месячных, овуляции и фертильных дней — как во Flo. Данные остаются только у тебя.</div></div></div><button class="btn gold" style="margin-top:10px" data-a="cySetup">Включить</button></div>`;
+  if (!CY().on) return `<h2>🌸 Цикл</h2><div class="card"><div class="row"><span style="font-size:28px">🌸</span><div class="grow"><b>Отслеживать цикл</b><div class="dim">Прогноз месячных, овуляции и фертильных дней</div></div></div><button class="btn gold" style="margin-top:10px" data-a="cySetup">Включить</button></div>`;
   const st = cycleStats();
   if (!st.last) return `<h2>🌸 Цикл</h2><div class="card"><div class="dim">Отметь начало месячных — и появится прогноз.</div><button class="btn gold" style="margin-top:10px" data-a="cyStart">🩸 Месячные начались</button></div>`;
   const pct = clamp((st.cycleDay / st.cycleLen) * 100, 0, 100);
