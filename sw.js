@@ -1,5 +1,5 @@
 // UpBek service worker: работает без интернета, обновления подтягиваются при наличии сети
-const CACHE = 'upbek-v28';
+const CACHE = 'upbek-v29';
 const FILES = ['./', 'index.html', 'theme-init.js', 'style.css', 'theme.css', 'config.js', 'data.js', 'app.js', 'sync.js', 'ai.js', 'voice.js', 'loans.js', 'rating.js', 'cycle.js', 'pair.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 

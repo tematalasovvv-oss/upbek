@@ -2,6 +2,10 @@
 'use strict';
 
 const CLOUD = window.UPBEK_CONFIG || {};
+// тестовый запуск на компьютере (localhost): без облака, рейтинга и пары, чтобы тестовые профили не попадали в базу.
+// Включить сервер в тесте явно: добавить ?cloud=1 к адресу.
+const DEV_MODE = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) && !/[?&]cloud=1\b/.test(location.search);
+if (DEV_MODE) CLOUD.url = '';
 const cloudReady = () => !!(CLOUD.url && CLOUD.key);
 const shortcutUrl = () => `${CLOUD.url}/rest/v1/rpc/push_event?apikey=${CLOUD.key}`;
 
