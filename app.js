@@ -436,6 +436,7 @@ function renderHero() {
   const q = questsOf(g.today);
   const qDone = q.filter((x) => x.done).length;
   const unsorted = S.tx.filter(isUnsorted).length;
+  const spentToday = sum(g.today.tx.filter((x) => x.type === 'exp' && !isDebt(x)), (x) => x.amount);
   const achs = ACH.filter((a) => g.ach.includes(a[0])).sort((a, b) => S.seenAch.indexOf(b[0]) - S.seenAch.indexOf(a[0]));
   const mainAcc = accById(S.main) || S.accounts[0];
   return `
@@ -450,7 +451,8 @@ function renderHero() {
       </div>
     </div>
     <div class="attrs">
-      ${attr('❤️', 'Сытость', hp, 'red', `${fmt(st.eaten)} / ${fmt(need)} ккал`)}
+      ${attr('❤️', 'Сытость', hp, 'red', `${fmt(st.eaten)} / ${fmt(need)} ккал`).replace('<div class="attr">', '<div class="attr tap" data-a="tab" data-v="body">')}
+      ${attr('🥩', 'Белок', Math.round((st.prot / t.protein) * 100), '', `${Math.round(st.prot)} / ${t.protein} г`).replace('<div class="attr">', '<div class="attr tap" data-a="tab" data-v="body">')}
       ${attr('⚡', 'Энергия', energyOf(sl), 'gold', sh == null ? 'запиши сон' : 'сон ' + fmtH(sh))}
       ${attr('💧', 'Вода', Math.round((st.water / waterNeed(st)) * 100), 'blue', `${glasses(st.water)} из ${glasses(waterNeed(st))} стаканов · нажми +`).replace('<div class="attr">', '<div class="attr tap" data-a="foodSheet" data-v="water">')}
       ${attr('💪', 'Форма', form, 'green', `${weekMins} / 150 мин за 7 дней`)}
@@ -458,6 +460,7 @@ function renderHero() {
     <div class="char-foot">
       ${mainAcc ? `<button class="pill" data-a="tab" data-v="money"><i class="dot" style="background:${mainAcc.color}"></i> ${esc(mainAcc.name)}: <b class="num">${fmt(g.bal[mainAcc.id])} сом</b></button>` : ''}
       <span class="pill">🔥 ${g.streak} ${g.streak === 1 ? 'день' : 'дн.'} подряд</span>
+      ${spentToday ? `<button class="pill" data-a="tab" data-v="money">💸 сегодня −${fmt(spentToday)}</button>` : ''}
       ${status ? `<span class="pill ${status[2]}">${status[0]} ${status[1]}</span>` : ''}
     </div>
   </div>
@@ -480,8 +483,6 @@ function renderHero() {
     ${q.map((x) => `<div class="quest ${x.done ? 'done' : ''}"><div class="qi">${x.ic}</div><div class="grow"><div class="qt">${x.t}</div><div class="qd">${x.d}</div></div><div class="xp">+${x.xp}</div></div>`).join('')}
   </div>
 
-  <h2>Сегодня <small>потрачено ${som(sum(g.today.tx.filter((x) => x.type === 'exp'), (x) => x.amount))}</small></h2>
-  ${todayCard(g.today)}
 
   <h2>Достижения <small>${achs.length} / ${ACH.length}</small></h2>
   ${achs.length ? `<div class="chips">${achs.map((a) => `<span class="chip on">${a[1]} ${esc(achName(a, g))}</span>`).join('')}</div>` : '<div class="dim">Сделай первую запись — и получишь первое достижение 🌱</div>'}
@@ -1144,7 +1145,7 @@ function renderMe() {
     <button class="item" data-a="clearRecords"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить записи</div><div class="is">Профиль, счета и кредиты останутся</div></span></button>
     <button class="item" data-a="reset"><span class="ii">🗑️</span><span class="grow"><div class="it red">Стереть всё и начать заново</div></span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.1</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.2</p>
   `;
 }
 function openAchSheet() {

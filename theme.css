@@ -248,3 +248,31 @@ textarea { resize: none; }
 .rating-card { display: block; width: 100%; text-align: left; border-color: rgba(246, 196, 83, .45); }
 .me-row { background: rgba(246, 196, 83, .08); border-radius: 12px; }
 .place { font-size: 18px; font-weight: 800; }
+
+/* =====================================================================
+   v3.2 — доступность по итогам разбора (контраст WCAG AA, размеры касаний)
+   ===================================================================== */
+/* размеры касаний: не меньше ~40 px */
+.btn.sm { min-height: 40px; }
+.chip { min-height: 38px; }
+.x { width: 38px; height: 38px; }
+.mini-step button { width: 34px; height: 34px; }
+.list .item > .btn.sm { min-width: 40px; }
+/* мелкий текст — не меньше 11 px */
+.sleepbars div { font-size: 11px; }
+.cat { font-size: 11px; }
+[data-theme="comic"] .tab { font-size: 11px; }
+/* Комикс: светлее вторичный текст, тёмный текст на розовом */
+[data-theme="comic"] { --dim: #ab9acb; }
+[data-theme="comic"] .lvl-badge, [data-theme="comic"] .chip.on { color: #14000a; }
+/* Женственная: темнее вторичный текст, акцент и зелёный, кнопки с белым текстом */
+[data-theme="soft"] { --dim: #866572; --muted: #765866; --gold: #b4426b; --green: #1f7a58; --red: #c73e5e; }
+[data-theme="soft"] .btn.gold, [data-theme="soft"] .mic { background: linear-gradient(135deg, #b4426b, #c75a82); }
+[data-theme="soft"] .fab { background: linear-gradient(135deg, #b4426b, #d36b90); }
+[data-theme="soft"] .btn { background: #8f4f73; }
+[data-theme="soft"] .btn.ghost { background: var(--card); color: var(--text); }
+[data-theme="soft"] .btn.danger { background: #fff0f3; color: var(--red); }
+[data-theme="comic"] .btn:not(.gold):not(.ghost):not(.danger) { color: #14000a; }
+[data-theme="soft"] .btn.gold { background: linear-gradient(135deg, #b4426b, #b84c76); }
+[data-theme="soft"] .pill.buff { color: #1a6e4f; }
+.seg button { min-height: 36px; }
