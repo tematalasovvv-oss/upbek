@@ -50,7 +50,7 @@ async function pairSync(force) {
   // «duel» — служебный сигнал: партнёр бросил вызов или ответил, сразу обновляем пару
   const msgs = nudges.filter((x) => x && x.kind !== 'duel' && NUDGE_LABELS[x.kind]);
   if (nudges.some((x) => x && x.kind === 'duel')) force = true;
-  if (msgs.length) { p.inbox = [...(p.inbox || []), ...msgs.map((x) => ({ from: String(x.from_name || '').slice(0, 24), kind: x.kind, msg: x.kind === 'msg' ? String(x.msg || '').slice(0, 120) : undefined, t: Date.parse(x.created_at) || Date.now() }))].slice(-10); save(true); }
+  if (msgs.length) { p.inbox = [...(p.inbox || []), ...msgs.map((x) => ({ from: String(x.from_name || '').slice(0, 24), kind: x.kind, msg: x.kind === 'msg' ? String(x.msg || '').slice(0, 120) : undefined, t: Date.parse(x.created_at) || Date.now(), got: Date.now() }))].slice(-10); save(true); }
   if (!force && p.synced && Date.now() - p.synced < 10 * 60000) return;
   await rpc('pair_join', { p_token: S.cloud.token, p_pair: p.code, p_name: p.name, p_summary: pairSummary() });
   const rows = (await rpc('pair_get', { p_token: S.cloud.token, p_pair: p.code })) || [];
@@ -142,8 +142,12 @@ function duelCard() {
 }
 
 /* ---- главная: дуэль и полученные подбадривания ---- */
+// сообщение висит на главной 1 час после получения или пока не нажмут ✓
+const NUDGE_TTL = 60 * 60000;
+const nudgeLive = (x) => Date.now() - (x.got || x.t || 0) < NUDGE_TTL;
 function pairCards() {
   const inbox = (S.pair && S.pair.inbox) || [];
+  if (inbox.length && !inbox.every(nudgeLive)) { S.pair.inbox = inbox.filter(nudgeLive); save(true); return pairCards(); }
   return duelCard() + inbox.slice(-3).reverse().map((x, i) => {
     const nd = NUDGE_LABELS[x.kind] || ['💌', ''];
     const text = x.kind === 'msg' ? `«${esc(x.msg || '')}»` : nd[1];
@@ -271,5 +275,10 @@ async function duelPush(msg) {
 markFirstOpen();
 // с утра данные партнёра должны быть свежими — первое открытие дня синхронизирует сразу
 setTimeout(() => pairSync(!S.pair || !S.pair.synced || dayKey(S.pair.synced) !== dayKey()).then(() => { if (!UI.sheetFn) render(); }).catch(() => {}), 1500);
-setInterval(() => { if (!document.hidden && !UI.sheetFn && UI.tab === 'hero' && S.dayFirst && Date.now() - S.dayFirst.at > 30 * 60000 && document.querySelector('.mate-cy')) render(); }, 60000);
+setInterval(() => {
+  if (document.hidden || UI.sheetFn || UI.tab !== 'hero') return;
+  const cyOld = S.dayFirst && Date.now() - S.dayFirst.at > 30 * 60000 && document.querySelector('.mate-cy');
+  const nOld = S.pair && (S.pair.inbox || []).some((x) => !nudgeLive(x));
+  if (cyOld || nOld) render();
+}, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { markFirstOpen(); pairSync(!S.pair || !S.pair.synced || dayKey(S.pair.synced) !== dayKey()).then(() => { if (!UI.sheetFn) render(); }).catch(() => {}); } });
