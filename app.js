@@ -53,7 +53,7 @@ function wholeWord(s, w) {
 
 /* ---------- данные ---------- */
 function fresh() {
-  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], loans: [], cycle: null, pair: null, pairDone: {}, bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
+  return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], loans: [], cycle: null, pair: null, pairDone: {}, prefs: { askQty: false }, bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
 }
 function load() {
   try { const raw = localStorage.getItem(STORE); if (raw) return Object.assign(fresh(), JSON.parse(raw)); } catch (e) { /* пусто */ }
@@ -338,6 +338,55 @@ function askText(html, placeholder, chips = []) {
   });
 }
 let lastAddAt = 0;
+/* ---- выбор количества при добавлении еды (настройка «Добавление записей») ---- */
+const askQtyOn = () => !!(S.prefs && S.prefs.askQty);
+function qtyMode(f) {
+  const u = String(f.u || '');
+  const pcs = u.match(/(\d+)\s*шт/);
+  if (pcs) return { kind: 'pcs', per: +pcs[1], step: 1 / +pcs[1], chips: [1, 2, 3, 4, 6, 8, 12, 16].filter((x) => x <= Math.max(4, +pcs[1] * 2)).map((x) => x / +pcs[1]) };
+  if (u === '100 г') return { kind: 'g', step: 0.5, chips: [0.5, 1, 1.5, 2, 2.5, 3] };
+  if (u === 'шт') return { kind: 'n', step: 1, chips: [1, 2, 3, 4, 5, 6, 8, 10] };
+  return { kind: 'n', step: 0.5, chips: [0.5, 1, 1.5, 2, 3] };
+}
+function qtyLabel(f, q, m) {
+  if (m.kind === 'pcs') return `${Math.round(q * m.per)} шт`;
+  if (m.kind === 'g') return `${Math.round(q * 100)} г`;
+  const frac = { 0.5: '½', 1.5: '1½', 2.5: '2½' }[q];
+  return `${frac || round1(q)} ${f.u === 'шт' ? 'шт' : '× ' + f.u}`;
+}
+function pickQty(f) {
+  const m = qtyMode(f);
+  let q = f.dq || 1;
+  return new Promise((res) => {
+    const el = document.createElement('div'); el.className = 'askbox';
+    const draw = () => {
+      const k = Math.round(f.k * q), p = Math.round(f.p * q);
+      el.innerHTML = `<div class="askcard qtycard">
+        <div class="asktext" style="text-align:center;margin-bottom:6px"><span style="font-size:30px">${f.ic}</span><br><b>${esc(f.n)}</b><div class="dim" style="font-size:13px">Сколько съел?</div></div>
+        <div class="stepper" style="margin:6px 0 10px"><button data-q="-">−</button><b class="num" style="font-size:24px;min-width:110px">${qtyLabel(f, q, m)}</b><button data-q="+">＋</button></div>
+        <div class="chips wrap" style="justify-content:center;margin-bottom:12px">${m.chips.map((c) => `<button class="chip${Math.abs(c - q) < 1e-6 ? ' on' : ''}" data-c="${c}">${qtyLabel(f, c, m)}</button>`).join('')}</div>
+        <div class="dim" style="text-align:center;margin-bottom:14px"><b class="num" style="color:var(--text);font-size:18px">${fmt(k)} ккал</b> · Б ${p} г</div>
+        <div class="row"><button class="btn ghost" data-r="0">Отмена</button><button class="btn gold" data-r="1">Записать</button></div></div>`;
+    };
+    draw();
+    el.addEventListener('click', (e) => {
+      const s = e.target.closest('[data-q]');
+      if (s) { const nq = q + (s.dataset.q === '+' ? m.step : -m.step); q = Math.max(m.step, Math.round(nq * 1000) / 1000); draw(); return; }
+      const c = e.target.closest('[data-c]'); if (c) { q = +c.dataset.c; draw(); return; }
+      const b = e.target.closest('[data-r]');
+      if (!b && e.target !== el) return;
+      el.remove(); res(b && b.dataset.r === '1' ? q : null);
+    });
+    document.body.appendChild(el);
+  });
+}
+function openEntrySheet() {
+  openSheet(() => `${sheetHead('✍️ Добавление записей')}
+  <div class="card">
+    <label class="checkrow"><input type="checkbox" ${askQtyOn() ? 'checked' : ''} data-a="prefAskQty"> 🍽️ Спрашивать количество при добавлении еды</label>
+  </div>
+  <div class="note">Выключено — блюдо записывается в 1 касание стандартной порцией (роллы — 8 шт), количество можно поправить потом, нажав на запись.<br>Включено — после касания сразу выбираешь, сколько съел: например, 2 шт роллов или 150 г.</div>`);
+}
 function tooFast() {
   const now = Date.now();
   if (now - lastAddAt < 1000) { toast('⏳ Секунду…'); return true; }
@@ -1170,12 +1219,13 @@ function renderMe() {
     <button class="item" data-a="pairOpen"><span class="ii">💑</span><span class="grow"><div class="it">Пара</div><div class="is">${S.pair && S.pair.mate ? 'Вы с ' + esc(S.pair.mate.name) + ' · дуэль и квесты' : S.pair && S.pair.code ? 'Ждём партнёра · код ' + esc(S.pair.code) : 'Дуэль недели, парные квесты, подбодрить'}</div></span><span>›</span></button>
     <button class="item" data-a="aiSheet"><span class="ii">✨</span><span class="grow"><div class="it">ИИ (Gemini)</div><div class="is">${typeof aiReady === 'function' && aiReady() ? 'Подключён · разборы недели' : 'Не подключён'}</div></span><span>›</span></button>
     <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${achList().filter((a) => g.ach.includes(a[0])).length} из ${achList().length}</div></span><span>›</span></button>
+    <button class="item" data-a="entrySheet"><span class="ii">✍️</span><span class="grow"><div class="it">Добавление записей</div><div class="is">${askQtyOn() ? 'Спрашивать количество еды' : 'В 1 касание, без вопросов'}</div></span><span>›</span></button>
     <button class="item" data-a="themeSheet"><span class="ii">🎨</span><span class="grow"><div class="it">Тема оформления</div><div class="is">${themeName}</div></span><span>›</span></button>
     <button class="item" data-a="backupSheet"><span class="ii">💾</span><span class="grow"><div class="it">Резервное копирование</div><div class="is">Облако, код восстановления, файл</div></span><span>›</span></button>
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.11</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.12</p>
   `;
 }
 function openAchSheet() {
@@ -1335,7 +1385,9 @@ const A = {
       if (!ok) return;
       lastAddAt = Date.now();
     }
-    const e = foodEntry(f, f.dq || 1);
+    let qty = f.dq || 1;
+    if (askQtyOn()) { qty = await pickQty(f); if (qty == null) return; }
+    const e = foodEntry(f, qty);
     const inp = $('#foodText'); if (inp) inp.value = '';
     act(() => { S.food.push(e); S.usage[f.id] = (S.usage[f.id] || 0) + 1; }, `${f.ic} ${esc(f.n)} · ${fmt(foodKcal(e))} ккал`, () => act(() => { S.food = S.food.filter((x) => x.id !== e.id); S.usage[f.id] = Math.max(0, (S.usage[f.id] || 1) - 1); }, 'Отменено'));
   },
@@ -1492,6 +1544,8 @@ const A = {
     <div class="card"><b>Очистить записи</b><div class="dim" style="margin:4px 0 10px">Удалятся еда, вода, траты, спорт, сон и вес. Профиль, счета, кредиты и уровень настроек останутся — регистрация не нужна.</div><button class="btn ghost" data-a="clearRecords">🧹 Очистить записи</button></div>
     <div class="card"><b>Стереть всё и начать заново</b><div class="dim" style="margin:4px 0 10px">Удалится вообще всё, включая профиль и счета — приложение начнёт с регистрации. Место в рейтинге и облачный код сохранятся.</div><button class="btn danger" data-a="reset">🗑️ Стереть всё</button></div>`),
   themeSheet: openThemeSheet,
+  entrySheet: openEntrySheet,
+  prefAskQty: () => { S.prefs = { ...(S.prefs || {}), askQty: !askQtyOn() }; save(); refreshSheet(); render(); toast(askQtyOn() ? '🍽️ Теперь при добавлении спрошу количество' : 'Еда снова добавляется в 1 касание'); },
   backupSheet: () => openBackupSheet(),
   theme: (el) => {
     const id = el.dataset.v;
