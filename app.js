@@ -560,16 +560,15 @@ const actById = (id) => ACTS.find((x) => x.id === id) || { id, ic: '🏃', n: '�
 // вода на странице «Тело»: видно, удалить и добавить в одно касание
 function waterCard(d) {
   const st = dayStats(d), need = waterNeed(st);
-  const items = [
-    ...d.wa.map((w) => ({ t: w.t, ic: '💧', n: 'Вода', ml: w.ml, del: w.id })),
-    ...d.food.filter((e) => e.hyd).map((e) => ({ t: e.t, ic: e.ic || '☕', n: e.name, ml: e.hyd * e.qty, food: e.id })),
-  ].sort((a, b) => b.t - a.t);
+  // напитки и супы показываются только в «Съедено» — здесь лишь их итог
+  const items = d.wa.map((w) => ({ t: w.t, ic: '💧', n: 'Вода', ml: w.ml, del: w.id })).sort((a, b) => b.t - a.t);
   return `<h2>Вода <small>${glasses(st.water)} из ${glasses(need)} стаканов</small></h2>
   <div class="card">
     <div class="row between"><b class="num" style="font-size:20px">💧 ${fmt(st.water)} <span class="muted" style="font-size:14px">/ ${fmt(need)} мл</span></b></div>
     <div style="margin:8px 0 12px">${bar(st.water, need, 'blue')}</div>
     <div class="row">${[[250, '🥛'], [500, '🍶']].map(([ml, ic]) => `<button class="btn ghost sm" style="flex:1" data-a="waterAdd" data-v="${ml}" data-keep="1">${ic} +${ml}</button>`).join('')}<button class="btn ghost sm" style="flex:1" data-a="foodSheet" data-v="water" data-keep="1">Ещё…</button></div>
-    ${items.length ? `<div class="list" style="margin-top:10px">${items.map((x) => `<div class="item"><span class="ii">${x.ic}</span><span class="grow"><div class="it">${esc(x.n)}</div><div class="is">${hhmm(x.t)}${x.food ? ' · из напитка/супа' : ''}</div></span><b class="iv">+${fmt(x.ml)}</b>${x.del ? `<button class="btn ghost sm" style="margin-left:8px" data-a="waterDel" data-v="${x.del}">✕</button>` : `<button class="btn ghost sm" style="margin-left:8px" data-a="editFood" data-v="${x.food}">✏️</button>`}</div>`).join('')}</div>` : '<div class="dim" style="margin-top:10px">Сегодня воды ещё не было</div>'}
+    ${items.length ? `<div class="list" style="margin-top:10px">${items.map((x) => `<div class="item"><span class="ii">${x.ic}</span><span class="grow"><div class="it">${esc(x.n)}</div><div class="is">${hhmm(x.t)}${x.food ? ' · из напитка/супа' : ''}</div></span><b class="iv">+${fmt(x.ml)}</b>${x.del ? `<button class="btn ghost sm" style="margin-left:8px" data-a="waterDel" data-v="${x.del}">✕</button>` : `<button class="btn ghost sm" style="margin-left:8px" data-a="editFood" data-v="${x.food}">✏️</button>`}</div>`).join('')}</div>` : '<div class="dim" style="margin-top:10px">Чистой воды ещё не было</div>'}
+    ${st.waterFood ? `<div class="dim" style="margin-top:8px">☕ +${fmt(st.waterFood)} мл из напитков и супов — они в «Съедено»</div>` : ''}
   </div>`;
 }
 function sleepCard(key) {
@@ -623,7 +622,6 @@ function renderFoodSheet() {
     <div class="split"><div><span>💧 Чистая вода</span><b class="num">${fmt(st.waterPure)} мл</b></div><div><span>☕ Напитки и супы</span><b class="num">${fmt(st.waterFood)} мл</b></div></div>
     <div class="tiles" style="grid-template-columns:repeat(4,1fr);margin-top:14px">${[[250, '🥛', 'стакан'], [330, '🥤', '0,33 л'], [500, '🍶', '0,5 л'], [1000, '💧', '1 литр']].map(([ml, ic, l]) => `<button class="tile" data-a="waterAdd" data-v="${ml}"><span class="ic">${ic}</span><span class="tn">+${ml}</span><span class="tk">${l}</span></button>`).join('')}</div>
     ${d.wa.length ? `<div class="card list" style="margin-top:12px">${[...d.wa].sort((a, b) => b.t - a.t).map((w) => `<div class="item"><span class="ii">💧</span><span class="grow"><div class="it">${fmt(w.ml)} мл</div><div class="is">${hhmm(w.t)}</div></span><button class="btn ghost sm" data-a="waterDel" data-v="${w.id}">✕</button></div>`).join('')}</div>` : ''}
-    ${d.food.some((e) => e.hyd) ? `<div class="hint" style="text-align:left;margin-top:12px">Из напитков и супов</div><div class="card list">${d.food.filter((e) => e.hyd).sort((a, b) => b.t - a.t).map((e) => `<div class="item"><span class="ii">${e.ic || '☕'}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${hhmm(e.t)}</div></span><b class="iv">+${fmt(e.hyd * e.qty)} мл</b></div>`).join('')}</div>` : ''}
     <div class="note">Норма ≈ 33 мл на кг веса + 0,5 л на час спорта. Чай, кофе, компот, молоко и супы засчитываются сами (кофе ~85%, суп ~50% объёма). Лучше всего — чистая вода; сладкие напитки дают и воду, и лишний сахар.</div>`;
   }
   if (UI.fs === 'steps') {
@@ -1145,7 +1143,7 @@ function renderMe() {
     <button class="item" data-a="clearRecords"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить записи</div><div class="is">Профиль, счета и кредиты останутся</div></span></button>
     <button class="item" data-a="reset"><span class="ii">🗑️</span><span class="grow"><div class="it red">Стереть всё и начать заново</div></span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.2</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.3</p>
   `;
 }
 function openAchSheet() {
