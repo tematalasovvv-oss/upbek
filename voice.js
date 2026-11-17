@@ -151,7 +151,7 @@ Object.assign(A, {
     const txs = v.tx.filter((x) => x.on).map((x) => ({ id: uid(), t: tOf(x), type: x.type, amount: x.amount, acc: x.acc, cat: x.cat, note: x.note, voice: true }));
     const eatTx = txs.find((x) => isEatCat(x.type, x.cat));
     const foods = v.food.filter((x) => x.on).map((x) => ({
-      id: uid(), t: tOf(x), name: x.name, ic: x.emoji || '🍽️', unit: `~${Math.round(x.grams)} г`, qty: x.mult,
+      id: uid(), t: tOf(x), name: String(x.name || '').slice(0, 60), ic: safeIc(x.emoji), unit: `~${Math.round(x.grams)} г`, qty: x.mult,
       k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ...(x.water_ml > 0 ? { hyd: Math.round(x.water_ml) } : {}), ai: true,
       ...(eatTx && dayKey(eatTx.t) === dayKey(tOf(x)) ? { tx: eatTx.id } : {}),
     }));

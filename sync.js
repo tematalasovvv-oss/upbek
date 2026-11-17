@@ -63,6 +63,7 @@ async function cloudRestore(token) {
   const r = await rpc('load_state', { p_token: token });
   if (!r || !r.data) throw new Error('По этому коду ничего не найдено');
   const data = await decryptState(token, r.data);
+  if (!validState(data)) throw new Error('Копия повреждена или подменена');
   S = Object.assign(fresh(), data, { cloud: { token, lastPush: Date.now() } });
   save(true); UI.tab = 'hero'; render();
 }

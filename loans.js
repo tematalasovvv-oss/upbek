@@ -184,7 +184,16 @@ function loadPdfJs() {
   if (!pdfjsP) pdfjsP = new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-    s.onload = () => { window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; res(window.pdfjsLib); };
+    // SRI: если файл на CDN подменят, браузер его не запустит
+    s.integrity = 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e';
+    s.crossOrigin = 'anonymous';
+    s.onload = async () => {
+      try {
+        const w = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js', { integrity: 'sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2', mode: 'cors' });
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([await w.blob()], { type: 'text/javascript' }));
+        res(window.pdfjsLib);
+      } catch (e) { pdfjsP = null; rej(new Error('Не удалось проверить читалку PDF')); }
+    };
     s.onerror = () => { pdfjsP = null; rej(new Error('Не удалось загрузить читалку PDF — проверь интернет')); };
     document.head.appendChild(s);
   });
@@ -194,7 +203,7 @@ const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''
 // текст PDF построчно: элементы с одной высоты склеиваются через « | »
 async function pdfText(file) {
   const lib = await loadPdfJs();
-  const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
   const out = [];
   for (let p = 1; p <= Math.min(doc.numPages, 20); p++) {
     const page = await doc.getPage(p);

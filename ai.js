@@ -246,7 +246,7 @@ Object.assign(A, {
     UI.foodDay = ctx.day;
     const t = viewDayTime();
     const entries = R.items.filter((x) => x.on).map((x) => ({
-      id: uid(), t, name: x.name, ic: x.emoji || '🍽️', unit: `~${Math.round(x.grams)} г`, qty: x.mult,
+      id: uid(), t, name: String(x.name || '').slice(0, 60), ic: safeIc(x.emoji), unit: `~${Math.round(x.grams)} г`, qty: x.mult,
       k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ...(x.water_ml > 0 ? { hyd: Math.round(x.water_ml) } : {}), ai: true, ...(ctx.link ? { tx: ctx.link } : {}),
     }));
     const ids = entries.map((e) => e.id);

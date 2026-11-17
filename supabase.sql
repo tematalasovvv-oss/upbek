@@ -138,3 +138,8 @@ revoke all on function public.board_leave(text, text) from public;
 grant execute on function public.board_push(text, text, text, text, int, int, numeric, numeric, numeric, jsonb) to anon, authenticated;
 grant execute on function public.board_list(text, text) to anon, authenticated;
 grant execute on function public.board_leave(text, text) to anon, authenticated;
+
+-- ===== v3.5 (безопасность): автоматизации отключены — закрываем запись событий снаружи =====
+revoke execute on function public.push_event(text, text, text) from anon, authenticated;
+delete from public.upbek_events;
+update public.upbek_board set detail = '{}'::jsonb;

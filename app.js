@@ -8,6 +8,8 @@ const DAY = 864e5;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+// значок блюда: только эмодзи (без букв, цифр и HTML-символов), иначе стандартный
+const safeIc = (s) => { const v = String(s || '').trim(); return v && v.length <= 8 && !/[A-Za-zА-Яа-яЁё0-9<>"'&`=\\/;:(){}\[\]]/.test(v) ? v : '🍽️'; };
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => Math.round(n || 0).toLocaleString('ru-RU');
 const som = (n) => fmt(n) + ' сом';
@@ -62,6 +64,23 @@ function save(noCloud) {
   try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (e) { toast('⚠️ Не получилось сохранить данные'); }
   if (!noCloud && typeof cloudSchedule === 'function') cloudSchedule();
 }
+/* ---------- проверка данных из файла/облака: только ожидаемые id и цвета ---------- */
+function validState(d) {
+  const okId = (v) => v == null || (typeof v === 'string' && /^[\w-]{1,48}$/.test(v));
+  const okColor = (v) => v == null || /^#[0-9a-f]{3,8}$/i.test(v);
+  const lists = ['tx', 'food', 'act', 'weights', 'sleep', 'water', 'customFoods', 'loans', 'accounts', 'coach'];
+  for (const k of lists) {
+    if (d[k] != null && !Array.isArray(d[k])) return false;
+    for (const x of d[k] || []) {
+      if (!x || typeof x !== 'object') return false;
+      if (!okId(x.id) || !okId(x.acc) || !okId(x.to) || !okId(x.loan) || !okId(x.tx) || !okId(x.fid) || !okId(x.kind) || !okId(x.cat) || !okId(x.bankAcc)) return false;
+      if (!okColor(x.color)) return false;
+      if (x.ic != null && x.ic !== safeIc(x.ic)) x.ic = safeIc(x.ic);
+    }
+  }
+  return okId(d.main);
+}
+
 /* ---------- темы ---------- */
 const THEMES = [
   { id: 'classic', n: 'Классика', d: 'Тёмная фэнтези-РПГ', sw: ['#0d1020', '#8b6cff', '#f6c453'] },
@@ -459,22 +478,13 @@ function renderHero() {
     </div>
     <div class="char-foot">
       ${mainAcc ? `<button class="pill" data-a="tab" data-v="money"><i class="dot" style="background:${mainAcc.color}"></i> ${esc(mainAcc.name)}: <b class="num">${fmt(g.bal[mainAcc.id])} сом</b></button>` : ''}
-      <span class="pill">🔥 ${g.streak} ${g.streak === 1 ? 'день' : 'дн.'} подряд</span>
-      ${spentToday ? `<button class="pill" data-a="tab" data-v="money">💸 сегодня −${fmt(spentToday)}</button>` : ''}
-      ${status ? `<span class="pill ${status[2]}">${status[0]} ${status[1]}</span>` : ''}
+      <button class="pill" data-a="tab" data-v="money">💸 сегодня −${fmt(spentToday)}</button>
     </div>
   </div>
 
   ${promptCards()}
   ${typeof loanPrompts === 'function' ? loanPrompts() : ''}
   ${typeof coachCard === 'function' ? coachCard() : ''}
-
-  <div class="quick">
-    <button class="qa" data-a="money" data-v="exp"><span class="ic">💰</span>Деньги</button>
-    <button class="qa" data-a="foodSheet" data-v="food"><span class="ic">🍗</span>Еда</button>
-    <button class="qa" data-a="sport"><span class="ic">🏃</span>Спорт</button>
-    <button class="qa" data-a="foodSheet" data-v="sleep"><span class="ic">😴</span>Сон</button>
-  </div>
 
   ${unsorted ? `<button class="alert" style="margin-top:12px" data-a="sortNext"><span style="font-size:22px">❓</span><span class="grow">Записей без категории: <b>${unsorted}</b><br><span class="dim">Нажми, чтобы разобрать</span></span><span>›</span></button>` : ''}
 
@@ -536,7 +546,7 @@ function renderBody() {
 
   <h2>Съедено <small>${fmt(sum(food, foodKcal))} ккал · ${Math.round(sum(food, foodProt))} г белка</small></h2>
   <div class="card list">
-    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${e.ic || '🍽️'}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.hyd ? ` · 💧 ${fmt(e.hyd * e.qty)} мл` : ''}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
+    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${esc(e.ic || '🍽️')}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.hyd ? ` · 💧 ${fmt(e.hyd * e.qty)} мл` : ''}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
   </div>
 
   <h2>Активность <small>${fmt(sum(acts, (a) => a.kcal))} ккал</small></h2>
@@ -1081,7 +1091,7 @@ function openAddAcc() {
 /* ---- еда: правка, своё блюдо ---- */
 function openEditFood(id) {
   const e = S.food.find((x) => x.id === id); if (!e) return;
-  openSheet(() => `${sheetHead(`${e.ic || '🍽️'} ${esc(e.name)}`)}
+  openSheet(() => `${sheetHead(`${esc(e.ic || '🍽️')} ${esc(e.name)}`)}
   <div class="dim" style="text-align:center">${fmt(e.k)} ккал · Б ${round1(e.p)} · Ж ${round1(e.f || 0)} · У ${round1(e.c || 0)} — за ${esc(e.unit || 'порцию')}</div>
   <div class="stepper"><button data-a="fqty" data-v="-0.5">−</button><b class="num">${round1(e.qty)}</b><button data-a="fqty" data-v="0.5">＋</button></div>
   <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">Б ${Math.round(foodProt(e))} г · Ж ${Math.round((e.f || 0) * e.qty)} г · У ${Math.round((e.c || 0) * e.qty)} г</div></div>
@@ -1141,7 +1151,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.4</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.5</p>
   `;
 }
 function openAchSheet() {
@@ -1482,7 +1492,7 @@ const A = {
     i.onchange = async () => {
       try {
         const d = JSON.parse(await i.files[0].text());
-        if (!d || !d.profile || !Array.isArray(d.tx)) throw new Error('bad');
+        if (!d || !d.profile || !Array.isArray(d.tx) || !validState(d)) throw new Error('bad');
         if (!confirm('Заменить текущие данные данными из копии?')) return;
         S = Object.assign(fresh(), d); save(); render(); toast('Данные загружены ✓');
       } catch (e) { toast('Это не похоже на копию UpBek'); }

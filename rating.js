@@ -43,7 +43,7 @@ async function boardPush(force) {
   const b = S.board; if (!boardOn() || !b || b.hidden) return;
   if (!force && b.pushed && Date.now() - b.pushed < 10 * 60000) return;
   const g = game(), w = periodPct(7), m = periodPct(30), td = dayPct(dayKey());
-  await rpc('board_push', { p_token: S.cloud.token, p_group: GLOBAL_BOARD, p_name: b.name, p_avatar: rankOf(g.L).ic, p_level: g.L, p_streak: g.streak, p_s7: w.total, p_s30: m.total, p_today: td.total, p_detail: { w, m } });
+  await rpc('board_push', { p_token: S.cloud.token, p_group: GLOBAL_BOARD, p_name: b.name, p_avatar: rankOf(g.L).ic, p_level: g.L, p_streak: g.streak, p_s7: w.total, p_s30: m.total, p_today: td.total, p_detail: {} }); // разбивку по калориям/сну/воде на сервер не отправляем
   b.pushed = Date.now(); save(true);
 }
 async function boardLoad() {
