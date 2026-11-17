@@ -340,38 +340,64 @@ function askText(html, placeholder, chips = []) {
 let lastAddAt = 0;
 /* ---- выбор количества при добавлении еды (настройка «Добавление записей») ---- */
 const askQtyOn = () => !!(S.prefs && S.prefs.askQty);
+// количество — человеческим языком: 0,5 порции · 450 мл · 300 г · 2 шт
+const dec = (n) => String(round1(n)).replace('.', ',');
+const UNIT_FORMS = {
+  'порция': ['порция', 'порции', 'порций'], 'тарелка': ['тарелка', 'тарелки', 'тарелок'], 'стакан': ['стакан', 'стакана', 'стаканов'],
+  'кружка': ['кружка', 'кружки', 'кружек'], 'кусок': ['кусок', 'куска', 'кусков'], 'горсть': ['горсть', 'горсти', 'горстей'],
+  'шампур': ['шампур', 'шампура', 'шампуров'], 'баскет': ['баскет', 'баскета', 'баскетов'], 'баночка': ['баночка', 'баночки', 'баночек'],
+  'ст. ложка': ['ст. ложка', 'ст. ложки', 'ст. ложек'], 'приём пищи': ['приём пищи', 'приёма пищи', 'приёмов пищи'],
+};
+const HALF_FORMS = { 'плитки': ['плитка', 'плитки', 'плиток'], 'лепёшки': ['лепёшка', 'лепёшки', 'лепёшек'] };
+function plural(n, forms) {
+  if (Math.abs(Math.round(n) - n) > 1e-6) return forms[1];
+  const a = Math.abs(Math.round(n)) % 100, b = a % 10;
+  return a > 10 && a < 20 ? forms[2] : b === 1 ? forms[0] : b >= 2 && b <= 4 ? forms[1] : forms[2];
+}
+function amountText(unit, q) {
+  const u = String(unit || 'порция').trim();
+  const pcs = u.match(/(\d+)\s*шт/);
+  if (pcs) return `${dec(q * +pcs[1])} шт`;
+  if (u === 'шт') return `${dec(q)} шт`;
+  const vol = u.match(/^(\d+(?:[,.]\d+)?)\s*л$/);
+  if (vol) { const ml = Math.round(q * parseFloat(vol[1].replace(',', '.')) * 1000); return ml >= 1000 ? `${dec(ml / 1000)} л` : `${ml} мл`; }
+  const gr = u.match(/(\d+)\s*г$/);
+  if (gr) return `${Math.round(q * +gr[1])} г`;
+  const half = u.match(/^½\s+(\S+)$/); // «½ плитки» → 0,5 плитки
+  if (half && HALF_FORMS[half[1]]) { const n = q / 2; return `${String(Math.round(n * 100) / 100).replace('.', ',')} ${plural(n, HALF_FORMS[half[1]])}`; }
+  if (UNIT_FORMS[u]) return `${dec(q)} ${plural(q, UNIT_FORMS[u])}`;
+  return `${dec(q)} × ${u}`;
+}
+// название без «(8 шт)» — количество и так показано отдельно
+const shortName = (n) => String(n || '').replace(/\s*\(\d+\s*шт\)/, '');
 function qtyMode(f) {
   const u = String(f.u || '');
   const pcs = u.match(/(\d+)\s*шт/);
-  if (pcs) return { kind: 'pcs', per: +pcs[1], step: 1 / +pcs[1], chips: [1, 2, 3, 4, 6, 8, 12, 16].filter((x) => x <= Math.max(4, +pcs[1] * 2)).map((x) => x / +pcs[1]) };
-  if (u === '100 г') return { kind: 'g', step: 0.5, chips: [0.5, 1, 1.5, 2, 2.5, 3] };
-  if (u === 'шт') return { kind: 'n', step: 1, chips: [1, 2, 3, 4, 5, 6, 8, 10] };
-  return { kind: 'n', step: 0.5, chips: [0.5, 1, 1.5, 2, 3] };
-}
-function qtyLabel(f, q, m) {
-  if (m.kind === 'pcs') return `${Math.round(q * m.per)} шт`;
-  if (m.kind === 'g') return `${Math.round(q * 100)} г`;
-  const frac = { 0.5: '½', 1.5: '1½', 2.5: '2½' }[q];
-  return `${frac || round1(q)} ${f.u === 'шт' ? 'шт' : '× ' + f.u}`;
+  if (pcs) { const n = +pcs[1]; return { step: 1 / n, chips: [1, 2, 3, 4, 6, 8, 12, 16].filter((x) => x <= Math.max(4, n * 2)).map((x) => x / n) }; }
+  if (u === 'шт') return { step: 1, chips: [1, 2, 3, 4, 5, 6, 8, 10] };
+  return { step: 0.5, chips: [0.5, 1, 1.5, 2, 2.5, 3] };
 }
 function pickQty(f) {
   const m = qtyMode(f);
   let q = f.dq || 1;
+  const stdHint = `${amountText(f.u, 1)} — ${fmt(f.k)} ккал`;
+  const drink = /л$|стакан|кружка/.test(String(f.u || ''));
   return new Promise((res) => {
     const el = document.createElement('div'); el.className = 'askbox';
     const draw = () => {
-      const k = Math.round(f.k * q), p = Math.round(f.p * q);
-      el.innerHTML = `<div class="askcard qtycard">
-        <div class="asktext" style="text-align:center;margin-bottom:6px"><span style="font-size:30px">${f.ic}</span><br><b>${esc(f.n)}</b><div class="dim" style="font-size:13px">Сколько съел?</div></div>
-        <div class="stepper" style="margin:6px 0 10px"><button data-q="-">−</button><b class="num" style="font-size:24px;min-width:110px">${qtyLabel(f, q, m)}</b><button data-q="+">＋</button></div>
-        <div class="chips wrap" style="justify-content:center;margin-bottom:12px">${m.chips.map((c) => `<button class="chip${Math.abs(c - q) < 1e-6 ? ' on' : ''}" data-c="${c}">${qtyLabel(f, c, m)}</button>`).join('')}</div>
-        <div class="dim" style="text-align:center;margin-bottom:14px"><b class="num" style="color:var(--text);font-size:18px">${fmt(k)} ккал</b> · Б ${p} г</div>
+      const k = Math.round(f.k * q), p = Math.round(f.p * q), atMin = q <= m.step + 1e-6;
+      el.innerHTML = `<div class="askcard qtycard" role="dialog" aria-label="Сколько съел">
+        <div class="qty-head"><span class="qty-ic">${f.ic}</span><div><b>${esc(shortName(f.n))}</b><div class="dim">${stdHint}</div></div></div>
+        <div class="qty-q">${drink ? 'Сколько выпил?' : 'Сколько съел?'}</div>
+        <div class="stepper qty-step"><button data-q="-" aria-label="Меньше" ${atMin ? 'disabled' : ''}>−</button><b class="num" aria-live="polite">${amountText(f.u, q)}</b><button data-q="+" aria-label="Больше">＋</button></div>
+        <div class="qty-chips">${m.chips.map((c) => `<button class="chip${Math.abs(c - q) < 1e-6 ? ' on' : ''}" data-c="${c}" aria-pressed="${Math.abs(c - q) < 1e-6}">${amountText(f.u, c)}</button>`).join('')}</div>
+        <div class="qty-sum"><b class="num">${fmt(k)} ккал</b><span>белок ${p} г</span></div>
         <div class="row"><button class="btn ghost" data-r="0">Отмена</button><button class="btn gold" data-r="1">Записать</button></div></div>`;
     };
     draw();
     el.addEventListener('click', (e) => {
       const s = e.target.closest('[data-q]');
-      if (s) { const nq = q + (s.dataset.q === '+' ? m.step : -m.step); q = Math.max(m.step, Math.round(nq * 1000) / 1000); draw(); return; }
+      if (s) { if (s.disabled) return; const nq = q + (s.dataset.q === '+' ? m.step : -m.step); q = Math.max(m.step, Math.round(nq * 1000) / 1000); draw(); return; }
       const c = e.target.closest('[data-c]'); if (c) { q = +c.dataset.c; draw(); return; }
       const b = e.target.closest('[data-r]');
       if (!b && e.target !== el) return;
@@ -615,7 +641,7 @@ function renderBody() {
 
   <h2>Съедено <small>${fmt(sum(food, foodKcal))} ккал · ${Math.round(sum(food, foodProt))} г белка</small></h2>
   <div class="card list">
-    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${esc(e.ic || '🍽️')}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.hyd ? ` · 💧 ${fmt(e.hyd * e.qty)} мл` : ''}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
+    ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${esc(e.ic || '🍽️')}</span><span class="grow"><div class="it">${esc(e.qty !== 1 ? shortName(e.name) : e.name)}${e.qty !== 1 ? ` <span class="dim">· ${amountText(e.unit, e.qty)}</span>` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.hyd ? ` · 💧 ${fmt(e.hyd * e.qty)} мл` : ''}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
   </div>
 
   <h2>Активность <small>${fmt(sum(acts, (a) => a.kcal))} ккал</small></h2>
@@ -819,7 +845,7 @@ function updateFoodPreview() {
     box.innerHTML = parts.map((p) => p.bad
       ? `<div class="pi bad"><span>❔ «${esc(p.bad)}» — не знаю. Допиши «${esc(p.bad)} 300 ккал»</span></div>`
       : p.custom ? `<div class="pi"><span>🍽️ ${esc(p.name)}</span><b>${fmt(p.k)}</b></div>`
-        : `<div class="pi"><span>${p.f.ic} ${esc(p.f.n)} × ${round1(p.qty)} <span class="dim">(${p.f.u})</span></span><b>${fmt(p.f.k * p.qty)}</b></div>`).join('')
+        : `<div class="pi"><span>${p.f.ic} ${esc(shortName(p.f.n))} <span class="dim">· ${amountText(p.f.u, p.qty)}</span></span><b>${fmt(p.f.k * p.qty)}</b></div>`).join('')
       + (ok.length ? `<button class="btn gold" style="margin-top:10px" data-a="saveText">Записать · ${fmt(total)} ккал</button>` : '')
       + (parts.some((x) => x.bad) ? '<button class="btn ghost" style="margin-top:8px" data-a="aiText">✨ Не знаю блюдо — посчитать с ИИ</button>' : '');
   }
@@ -1164,8 +1190,8 @@ function openAddAcc() {
 function openEditFood(id) {
   const e = S.food.find((x) => x.id === id); if (!e) return;
   openSheet(() => `${sheetHead(`${esc(e.ic || '🍽️')} ${esc(e.name)}`)}
-  <div class="dim" style="text-align:center">${fmt(e.k)} ккал · Б ${round1(e.p)} · Ж ${round1(e.f || 0)} · У ${round1(e.c || 0)} — за ${esc(e.unit || 'порцию')}</div>
-  <div class="stepper"><button data-a="fqty" data-v="-0.5">−</button><b class="num">${round1(e.qty)}</b><button data-a="fqty" data-v="0.5">＋</button></div>
+  <div class="dim" style="text-align:center">${fmt(e.k)} ккал · Б ${dec(e.p)} · Ж ${dec(e.f || 0)} · У ${dec(e.c || 0)} — за ${amountText(e.unit, 1)}</div>
+  <div class="stepper qty-step"><button data-a="fqty" data-v="-1" aria-label="Меньше">−</button><b class="num">${amountText(e.unit, e.qty)}</b><button data-a="fqty" data-v="1" aria-label="Больше">＋</button></div>
   <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">Б ${Math.round(foodProt(e))} г · Ж ${Math.round((e.f || 0) * e.qty)} г · У ${Math.round((e.c || 0) * e.qty)} г</div></div>
   ${e.hyd ? `<div class="note" style="margin:-4px 0 12px">💧 В водный баланс: +${fmt(e.hyd * e.qty)} мл</div>` : ''}
   <div class="field"><label>📅 Дата — если записал не в тот день</label><input type="date" id="feDate" max="${dayKey()}" value="${dayKey(e.t)}"></div>
@@ -1225,7 +1251,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.12</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.13</p>
   `;
 }
 function openAchSheet() {
@@ -1423,7 +1449,7 @@ const A = {
     act(() => S.water.push(w), `💧 +${w.ml} мл`, () => act(() => { S.water = S.water.filter((x) => x.id !== w.id); }, 'Отменено'));
   },
   waterDel: (el) => { const w = S.water.find((x) => x.id === el.dataset.v); act(() => { S.water = S.water.filter((x) => x.id !== w.id); }, 'Удалено', () => act(() => S.water.push(w), 'Восстановлено')); },
-  fqty: (el) => { const e = S.food.find((x) => x.id === UI.editFood); if (!e) return; const q = Math.max(0.5, round1(e.qty + +el.dataset.v)); act(() => { e.qty = q; }); refreshSheet(); },
+  fqty: (el) => { const e = S.food.find((x) => x.id === UI.editFood); if (!e) return; const st = qtyMode({ u: e.unit }).step; const q = Math.max(st, Math.round((e.qty + st * +el.dataset.v) * 1000) / 1000); act(() => { e.qty = q; }); refreshSheet(); },
   fdel: () => { const e = S.food.find((x) => x.id === UI.editFood); closeSheet(); act(() => { S.food = S.food.filter((x) => x.id !== e.id); }, 'Удалено', () => act(() => S.food.push(e), 'Восстановлено')); },
   customFood: openCustomFood,
   cfSave: () => {
