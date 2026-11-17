@@ -107,7 +107,7 @@ begin
   if p_group !~ '^[A-Z0-9]{6}$' then raise exception 'bad group'; end if;
   if length(coalesce(p_name, '')) < 1 or length(p_name) > 24 then raise exception 'bad name'; end if;
   if octet_length(coalesce(p_detail::text, '')) > 4000 then raise exception 'too big'; end if;
-  if (select count(*) from upbek_board where grp = p_group and owner <> o) >= 50 then raise exception 'group full'; end if;
+  if (select count(*) from upbek_board where grp = p_group and owner <> o) >= 5000 then raise exception 'group full'; end if;
   insert into upbek_board (owner, grp, name, avatar, level, streak, s7, s30, today, detail, updated_at)
   values (o, p_group, p_name, left(p_avatar, 8), p_level, p_streak, p_s7, p_s30, p_today, p_detail, now())
   on conflict (owner, grp) do update set name = excluded.name, avatar = excluded.avatar, level = excluded.level, streak = excluded.streak,
@@ -123,7 +123,7 @@ language sql security definer set search_path = public as $$
   where b.grp = p_group
     and exists (select 1 from upbek_board m where m.grp = p_group and m.owner = upbek_owner(p_token))
   order by b.s7 desc nulls last
-  limit 50
+  limit 200
 $$;
 
 create or replace function public.board_leave(p_token text, p_group text)

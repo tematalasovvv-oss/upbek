@@ -543,6 +543,8 @@ function renderBody() {
     ${acts.length ? acts.map((a) => { const A = actById(a.kind); return `<button class="item" data-a="editAct" data-v="${a.id}"><span class="ii">${A.ic}</span><span class="grow"><div class="it">${A.n}</div><div class="is">${hhmm(a.t)} · ${a.steps ? fmt(a.steps) + ' шагов' : a.min + ' мин'}</div></span><span class="iv">−${fmt(a.kcal)}</span></button>`; }).join('') : '<div class="empty">Прогулка, фитнес и шаги появятся здесь.</div>'}
   </div>
 
+  ${waterCard(d)}
+
   <h2>Сон</h2>
   ${sleepCard(key)}
 
@@ -554,6 +556,21 @@ function renderBody() {
   </div>`;
 }
 const actById = (id) => ACTS.find((x) => x.id === id) || { id, ic: '🏃', n: 'Активность', met: 5 };
+// вода на странице «Тело»: видно, удалить и добавить в одно касание
+function waterCard(d) {
+  const st = dayStats(d), need = waterNeed(st);
+  const items = [
+    ...d.wa.map((w) => ({ t: w.t, ic: '💧', n: 'Вода', ml: w.ml, del: w.id })),
+    ...d.food.filter((e) => e.hyd).map((e) => ({ t: e.t, ic: e.ic || '☕', n: e.name, ml: e.hyd * e.qty, food: e.id })),
+  ].sort((a, b) => b.t - a.t);
+  return `<h2>Вода <small>${glasses(st.water)} из ${glasses(need)} стаканов</small></h2>
+  <div class="card">
+    <div class="row between"><b class="num" style="font-size:20px">💧 ${fmt(st.water)} <span class="muted" style="font-size:14px">/ ${fmt(need)} мл</span></b></div>
+    <div style="margin:8px 0 12px">${bar(st.water, need, 'blue')}</div>
+    <div class="row">${[[250, '🥛'], [500, '🍶']].map(([ml, ic]) => `<button class="btn ghost sm" style="flex:1" data-a="waterAdd" data-v="${ml}" data-keep="1">${ic} +${ml}</button>`).join('')}<button class="btn ghost sm" style="flex:1" data-a="foodSheet" data-v="water" data-keep="1">Ещё…</button></div>
+    ${items.length ? `<div class="list" style="margin-top:10px">${items.map((x) => `<div class="item"><span class="ii">${x.ic}</span><span class="grow"><div class="it">${esc(x.n)}</div><div class="is">${hhmm(x.t)}${x.food ? ' · из напитка/супа' : ''}</div></span><b class="iv">+${fmt(x.ml)}</b>${x.del ? `<button class="btn ghost sm" style="margin-left:8px" data-a="waterDel" data-v="${x.del}">✕</button>` : `<button class="btn ghost sm" style="margin-left:8px" data-a="editFood" data-v="${x.food}">✏️</button>`}</div>`).join('')}</div>` : '<div class="dim" style="margin-top:10px">Сегодня воды ещё не было</div>'}
+  </div>`;
+}
 function sleepCard(key) {
   const s = sleepOf(key);
   const days = [];
@@ -1127,7 +1144,7 @@ function renderMe() {
     <button class="item" data-a="clearRecords"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить записи</div><div class="is">Профиль, счета и кредиты останутся</div></span></button>
     <button class="item" data-a="reset"><span class="ii">🗑️</span><span class="grow"><div class="it red">Стереть всё и начать заново</div></span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.0</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.1</p>
   `;
 }
 function openAchSheet() {

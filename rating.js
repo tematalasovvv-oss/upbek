@@ -28,34 +28,45 @@ function periodPct(n) {
 }
 const PCT_LABELS = [['kcal', '🍗', 'Калории'], ['prot', '🥩', 'Белок'], ['water', '💧', 'Вода'], ['sleep', '😴', 'Сон'], ['move', '🏃', 'Движение']];
 
-/* ---- сервер ---- */
+/* ---- сервер: один общий рейтинг для всех пользователей ---- */
+const GLOBAL_BOARD = 'GLOBAL';
 const boardOn = () => typeof cloudReady === 'function' && cloudReady() && S.cloud && S.cloud.token;
-const newGroupCode = () => { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; const r = crypto.getRandomValues(new Uint8Array(6)); r.forEach((x) => (s += a[x % a.length])); return s; };
+function boardInit() {
+  if (!S.profile) return;
+  const b = S.board || {};
+  // старые группы по коду больше не используются — переезжаем в общий рейтинг
+  if (b.grp && b.grp !== GLOBAL_BOARD && boardOn()) rpc('board_leave', { p_token: S.cloud.token, p_group: b.grp }).catch(() => {});
+  S.board = { grp: GLOBAL_BOARD, name: (b.name || S.profile.name || 'Герой').slice(0, 24), hidden: !!b.hidden, pushed: b.grp === GLOBAL_BOARD ? b.pushed : 0 };
+}
 async function boardPush(force) {
-  const b = S.board; if (!boardOn() || !b || !b.grp) return;
+  if (!S.board || S.board.grp !== GLOBAL_BOARD) boardInit();
+  const b = S.board; if (!boardOn() || !b || b.hidden) return;
   if (!force && b.pushed && Date.now() - b.pushed < 10 * 60000) return;
   const g = game(), w = periodPct(7), m = periodPct(30), td = dayPct(dayKey());
-  await rpc('board_push', { p_token: S.cloud.token, p_group: b.grp, p_name: b.name, p_avatar: rankOf(g.L).ic, p_level: g.L, p_streak: g.streak, p_s7: w.total, p_s30: m.total, p_today: td.total, p_detail: { w, m } });
+  await rpc('board_push', { p_token: S.cloud.token, p_group: GLOBAL_BOARD, p_name: b.name, p_avatar: rankOf(g.L).ic, p_level: g.L, p_streak: g.streak, p_s7: w.total, p_s30: m.total, p_today: td.total, p_detail: { w, m } });
   b.pushed = Date.now(); save(true);
 }
 async function boardLoad() {
-  const b = S.board; if (!boardOn() || !b || !b.grp) return [];
-  return (await rpc('board_list', { p_token: S.cloud.token, p_group: b.grp })) || [];
+  if (!boardOn() || !S.board || S.board.hidden) return [];
+  return (await rpc('board_list', { p_token: S.cloud.token, p_group: GLOBAL_BOARD })) || [];
 }
 
 /* ---- превью в «Ещё» ---- */
 function ratingPreview() {
   const w = periodPct(7), td = dayPct(dayKey());
+  const place = UI.rList && UI.rList.length ? [...UI.rList].sort((a, b) => b.s7 - a.s7).findIndex((x) => x.me) + 1 : 0;
   return `<h2>🏆 Рейтинг</h2>
   <button class="card rating-card" data-a="ratingOpen">
-    <div class="row"><span class="coach-score">${w.total}<small>%</small></span><div class="grow" style="text-align:left"><b>Твой средний день за неделю</b><div class="dim">Сегодня: ${td.total}% · ${S.board && S.board.grp ? 'группа ' + esc(S.board.grp) : 'создай группу и позови друзей'}</div></div><span>›</span></div>
+    <div class="row"><span class="coach-score">${w.total}<small>%</small></span><div class="grow" style="text-align:left"><b>Твой средний день за неделю</b><div class="dim">Сегодня: ${td.total}%${place ? ` · ${place} место из ${UI.rList.length}` : ' · общий рейтинг всех героев'}</div></div><span>›</span></div>
   </button>`;
 }
 
 /* ---- страница рейтинга ---- */
-function openRating() { UI.rPer = UI.rPer || 7; UI.rList = null; openSheet(renderRating); refreshBoard(); }
+function openRating() { UI.rPer = UI.rPer || 7; openSheet(renderRating); refreshBoard(); }
 async function refreshBoard() {
-  if (!S.board || !S.board.grp || !boardOn()) return;
+  if (!boardOn()) return;
+  if (!S.board || S.board.grp !== GLOBAL_BOARD) boardInit();
+  if (S.board.hidden) return;
   UI.rBusy = true; refreshSheet();
   try { await boardPush(true); UI.rList = await boardLoad(); UI.rErr = null; }
   catch (e) { UI.rErr = String(e.message || e).slice(0, 120); }
@@ -69,54 +80,44 @@ function renderRating() {
     <div class="dim" style="margin-top:8px">Процент дня — среднее по 5 показателям (каждый максимум 100%). Финансы не учитываются. Дней в расчёте: ${my.days}.</div>
   </div>`;
   const seg = `<div class="seg" style="margin-bottom:12px"><button class="${per === 7 ? 'on' : ''}" data-a="rPer" data-v="7">7 дней</button><button class="${per === 30 ? 'on' : ''}" data-a="rPer" data-v="30">30 дней</button></div>`;
-  if (!boardOn()) return `${sheetHead('🏆 Рейтинг')}${seg}${mine}<div class="note">Для рейтинга с друзьями нужна облачная копия (Настройки → Резервное копирование).</div>`;
-  if (!S.board || !S.board.grp) {
-    return `${sheetHead('🏆 Рейтинг')}${seg}${mine}
-    <h3 class="vh">Соревнуйся с друзьями</h3>
-    <div class="field"><label>Твоё имя в рейтинге</label><input id="rName" value="${esc((S.board && S.board.name) || S.profile.name || '')}" maxlength="24"></div>
-    <div class="row"><button class="btn gold" data-a="rCreate">＋ Создать группу</button><button class="btn ghost" data-a="rJoinAsk">🔑 Войти по коду</button></div>
-    <div class="note">Видны только имя, уровень, серия и проценты. Траты и деньги не передаются. Группу видят только те, у кого есть код.</div>`;
-  }
-  const list = (UI.rList || []).map((x) => ({ ...x, sc: Math.round(+(per === 7 ? x.s7 : x.s30) || 0) })).sort((a, b) => b.sc - a.sc);
-  return `${sheetHead('🏆 Рейтинг')}${seg}
+  if (!boardOn()) return `${sheetHead('🏆 Рейтинг')}${seg}${mine}<div class="note">Общий рейтинг работает через облако (Настройки → Резервное копирование).</div>`;
+  const b = S.board || {};
+  const me = `<div class="card">
+    <div class="field" style="margin-bottom:8px"><label>Твоё имя в рейтинге</label><div class="row"><input id="rName" value="${esc(b.name || '')}" maxlength="24"><button class="btn ghost sm" style="padding:11px 12px" data-a="rName">OK</button></div></div>
+    <label class="checkrow"><input type="checkbox" id="rHidden" ${b.hidden ? 'checked' : ''} data-a="rHide"> Скрыть меня из рейтинга</label>
+    <div class="dim">В рейтинге видны только имя, уровень, серия и проценты. Деньги и записи не передаются.</div>
+  </div>`;
+  if (b.hidden) return `${sheetHead('🏆 Рейтинг')}${seg}${mine}${me}<div class="note">Ты скрыт — общий рейтинг виден только участникам. Сними галочку, чтобы вернуться.</div>`;
+  const list = (UI.rList || []).map((x) => ({ ...x, sc: Math.round(+(per === 7 ? x.s7 : x.s30) || 0) })).sort((a, c) => c.sc - a.sc);
+  const myPlace = list.findIndex((x) => x.me) + 1;
+  return `${sheetHead('🏆 Общий рейтинг')}${seg}
+  ${myPlace ? `<div class="hint" style="text-align:left;margin:-4px 0 8px">Ты на <b class="gold">${myPlace} месте</b> из ${list.length}</div>` : ''}
   <div class="card list">
     ${UI.rBusy && !UI.rList ? '<div class="empty">Загружаю…</div>' : ''}
     ${UI.rErr ? `<div class="empty red">⚠️ ${esc(UI.rErr)}</div>` : ''}
     ${list.map((x, i) => `<div class="item ${x.me ? 'me-row' : ''}"><span class="ii place">${['🥇', '🥈', '🥉'][i] || i + 1}</span><span class="grow"><div class="it">${esc(x.avatar || '')} ${esc(x.name)}${x.me ? ' <span class="dim">(ты)</span>' : ''}</div><div class="is">ур. ${x.level || 1} · 🔥 ${x.streak || 0} дн. · сегодня ${Math.round(+x.today || 0)}%</div></span><b class="num ${i === 0 ? 'gold' : ''}" style="font-size:18px">${x.sc}%</b></div>`).join('')}
   </div>
-  ${mine}
-  <div class="card"><div class="row between"><div><div class="dim">Код группы</div><b class="num" style="font-size:22px;letter-spacing:2px">${esc(S.board.grp)}</b></div><button class="btn gold sm" data-a="rShare">Пригласить</button></div>
-  <div class="row" style="margin-top:10px"><button class="btn ghost sm" data-a="rRefresh">🔄 Обновить</button><button class="btn ghost sm" data-a="rLeave">Выйти из группы</button></div></div>`;
+  <button class="btn ghost sm" style="margin:10px 0" data-a="rRefresh">🔄 Обновить</button>
+  ${mine}${me}`;
 }
 
 Object.assign(A, {
   ratingOpen: openRating,
   rPer: (el) => { UI.rPer = +el.dataset.v; refreshSheet(); },
   rRefresh: refreshBoard,
-  rCreate: async () => {
+  rName: async () => {
     const name = ($('#rName').value || '').trim().slice(0, 24); if (!name) { toast('Впиши имя'); return; }
-    S.board = { grp: newGroupCode(), name }; save();
-    await refreshBoard(); toast('🏆 Группа создана — пригласи друзей кодом');
+    S.board.name = name; save(); await refreshBoard(); toast('✓ Имя в рейтинге обновлено');
   },
-  rJoinAsk: async () => {
-    const name = ($('#rName').value || '').trim().slice(0, 24); if (!name) { toast('Впиши имя'); return; }
-    const code = (await askText('🔑 Код группы от друга', 'Например: K7M2QX')).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (code.length !== 6) { if (code) toast('Код — 6 символов'); return; }
-    S.board = { grp: code, name }; save();
-    await refreshBoard(); toast('🏆 Ты в группе!');
-  },
-  rShare: async () => {
-    const text = `Давай соревноваться в UpBek! Открой ${location.origin + location.pathname} → Ещё → Рейтинг → «Войти по коду»: ${S.board.grp}`;
-    try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e.name === 'AbortError') return; }
-    copyText(text, 'Приглашение');
-  },
-  rLeave: async () => {
-    if (!(await ask('Выйти из группы? Тебя уберут из рейтинга.', 'Выйти', 'Отмена'))) return;
-    try { await rpc('board_leave', { p_token: S.cloud.token, p_group: S.board.grp }); } catch (e) { /* ок */ }
-    S.board = { name: S.board.name }; save(); UI.rList = null; refreshSheet();
+  rHide: async (el) => {
+    const hide = !S.board.hidden;
+    if (hide) { try { await rpc('board_leave', { p_token: S.cloud.token, p_group: GLOBAL_BOARD }); } catch (e) { /* ок */ } UI.rList = null; }
+    S.board.hidden = hide; S.board.pushed = 0; save();
+    if (!hide) await refreshBoard(); else refreshSheet();
+    toast(hide ? 'Ты скрыт из рейтинга' : '🏆 Ты снова в рейтинге');
   },
 });
 
-// раз в 10 минут при открытии приложения отправляем свои проценты
-setTimeout(() => boardPush(false).catch(() => {}), 4000);
+// при открытии приложения (не чаще раза в 10 минут) отправляем свои проценты
+setTimeout(() => { boardInit(); boardPush(false).catch(() => {}); }, 4000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) boardPush(false).catch(() => {}); });
