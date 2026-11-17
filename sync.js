@@ -51,6 +51,7 @@ async function cloudPush() {
     const { cloud, ...data } = S;
     await rpc('save_state', { p_token: S.cloud.token, p_data: await encryptState(S.cloud.token, data) });
     S.cloud.lastPush = Date.now(); S.cloud.err = null;
+    if (typeof boardPush === 'function') boardPush(false).catch(() => {}); // рейтинг — не чаще раза в 10 минут
   } catch (e) {
     S.cloud.err = String(e.message || e).slice(0, 140);
   } finally {

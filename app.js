@@ -1131,19 +1131,17 @@ function renderMe() {
 
   ${typeof ratingPreview === 'function' ? ratingPreview() : ''}
 
-  ${typeof aiSection === 'function' ? aiSection() : ''}
-
   <h2>⚙️ Настройки</h2>
   <div class="card list">
     <button class="item" data-a="profile"><span class="ii">👤</span><span class="grow"><div class="it">Настройки профиля</div><div class="is">Вес, рост, цель, свои нормы</div></span><span>›</span></button>
+    <button class="item" data-a="aiSheet"><span class="ii">✨</span><span class="grow"><div class="it">ИИ (Gemini)</div><div class="is">${typeof aiReady === 'function' && aiReady() ? 'Подключён · разборы недели' : 'Не подключён'}</div></span><span>›</span></button>
     <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${g.ach.length} из ${ACH.length}</div></span><span>›</span></button>
     <button class="item" data-a="themeSheet"><span class="ii">🎨</span><span class="grow"><div class="it">Тема оформления</div><div class="is">${themeName}</div></span><span>›</span></button>
     <button class="item" data-a="backupSheet"><span class="ii">💾</span><span class="grow"><div class="it">Резервное копирование</div><div class="is">Облако, код восстановления, файл</div></span><span>›</span></button>
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
-    <button class="item" data-a="clearRecords"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить записи</div><div class="is">Профиль, счета и кредиты останутся</div></span></button>
-    <button class="item" data-a="reset"><span class="ii">🗑️</span><span class="grow"><div class="it red">Стереть всё и начать заново</div></span></button>
+    <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.3</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.4</p>
   `;
 }
 function openAchSheet() {
@@ -1450,10 +1448,15 @@ const A = {
     save(); UI.tab = 'hero'; render();
     toast('Добро пожаловать в UpBek! ⚔️');
     if (typeof cloudStart === 'function') cloudStart();
+    // сразу в общий рейтинг — не ждать следующего открытия приложения
+    if (typeof boardPush === 'function') setTimeout(() => { boardInit(); if (S.board && S.profile) S.board.name = S.board.name && S.board.name !== 'Герой' ? S.board.name : (S.profile.name || 'Герой').slice(0, 24); boardPush(true).catch(() => {}); }, 1500);
     progress(game());
   },
 
   achSheet: openAchSheet,
+  clearSheet: () => openSheet(() => `${sheetHead('🧹 Очистить данные')}
+    <div class="card"><b>Очистить записи</b><div class="dim" style="margin:4px 0 10px">Удалятся еда, вода, траты, спорт, сон и вес. Профиль, счета, кредиты и уровень настроек останутся — регистрация не нужна.</div><button class="btn ghost" data-a="clearRecords">🧹 Очистить записи</button></div>
+    <div class="card"><b>Стереть всё и начать заново</b><div class="dim" style="margin:4px 0 10px">Удалится вообще всё, включая профиль и счета — приложение начнёт с регистрации. Место в рейтинге и облачный код сохранятся.</div><button class="btn danger" data-a="reset">🗑️ Стереть всё</button></div>`),
   themeSheet: openThemeSheet,
   backupSheet: () => openBackupSheet(),
   theme: (el) => {
@@ -1505,7 +1508,10 @@ const A = {
   reset: () => {
     if (!confirm('Точно стереть ВСЕ данные? Это нельзя отменить.')) return;
     if (!confirm('Последний шанс: стираем?')) return;
-    S = fresh(); save(); UI.ob = { step: 1, d: {}, banks: { mbank: { on: true, bal: '' } }, main: 'mbank' }; UI.tab = 'hero'; render();
+    // облачный ключ и имя в рейтинге сохраняем: для сервера это тот же пользователь, без дублей
+    const keep = { cloud: S.cloud, board: S.board ? { name: S.board.name, hidden: S.board.hidden } : null };
+    closeSheet();
+    S = Object.assign(fresh(), keep); save(); UI.ob = { step: 1, d: {}, banks: { mbank: { on: true, bal: '' } }, main: 'mbank' }; UI.tab = 'hero'; render();
   },
 };
 

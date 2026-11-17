@@ -191,14 +191,21 @@ function openAiSetup() {
   <button class="btn danger" style="margin-top:8px" data-a="aiOff">Отключить ИИ</button>` : ''}
   <div class="note">🔒 Ключ хранится только на этом телефоне. На бесплатном тарифе Google может использовать запросы для улучшения моделей — не фотографируй ничего личного.</div>`);
 }
-function aiSection() {
+function openAiSheet() { openSheet(() => `${sheetHead('✨ ИИ (Gemini)')}${aiSection(true)}${coachHistory()}`); }
+function coachHistory() {
+  const list = (S.coach || []).map((c, i) => ({ c, i })).sort((a, b) => (b.c.week > a.c.week ? 1 : b.c.week < a.c.week ? -1 : b.c.at - a.c.at));
+  return `<h3 class="vh">🧠 Разборы недели</h3>
+  ${list.length ? `<div class="card list">${list.map(({ c, i }) => { const mon = new Date(c.week + 'T12:00:00'); const sun = new Date(mon.getTime() + 6 * DAY); return `<button class="item" data-a="coachOpen" data-v="${i}"><span class="ii coach-mini">${Math.round(c.score)}</span><span class="grow"><div class="it">${esc(c.title || 'Разбор недели')}</div><div class="is">${mon.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} — ${sun.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} · цели ${c.goals.filter((g) => g.done).length}/${c.goals.length}</div></span><span>›</span></button>`; }).join('')}</div>` : '<div class="card empty">Первый разбор появится в понедельник</div>'}
+  ${aiReady() ? '<button class="btn ghost" style="margin-top:10px" data-a="coachNow">🔄 Разобрать прошлую неделю сейчас</button>' : ''}`;
+}
+function aiSection(inSheet) {
   const c = aiCfg(); const u = aiUsage();
-  return `<h2>✨ ИИ (Gemini)</h2>
+  return `${inSheet ? '' : '<h2>✨ ИИ (Gemini)</h2>'}
   <div class="card"><div class="row between"><div><b>${c.key ? 'Подключён' : 'Не подключён'}</b><div class="dim">${c.key ? esc(c.model || '') : 'Еда по фото, выписки, тренер недели — бесплатно'}</div></div>
   <button class="btn ${c.key ? 'ghost' : 'gold'} sm" data-a="aiSetup">${c.key ? 'Настроить' : 'Подключить'}</button></div>
   ${c.key ? `<div class="split"><div><span>Запросов сегодня</span><b class="num">${u.today}</b></div><div><span>За месяц</span><b class="num">${u.month}</b></div></div>
   <div class="note">Бесплатный ключ без карты: при лимите Google просто ответит «попробуй позже», денег не спишет. Лимиты: aistudio.google.com → Usage.</div>` : ''}
-  ${c.key ? '<button class="btn ghost" style="margin-top:10px" data-a="coachOpen">🧠 Разбор недели</button>' : ''}</div>`;
+</div>`;
 }
 
 Object.assign(A, {
@@ -438,15 +445,18 @@ const lastCoach = () => (S.coach || []).slice(-1)[0] || null;
 function coachCard() {
   if (UI.coachBusy) return `<div class="card prompt"><div class="row"><div class="spinner" style="width:28px;height:28px;border-width:3px"></div><div class="grow"><b>🧠 Тренер разбирает твою неделю…</b><div class="dim">Пару секунд</div></div></div></div>`;
   const c = lastCoach();
-  if (!c || Date.now() - c.at > 8 * DAY) return '';
+  if (!c || c.week !== lastWeek().key) return '';
+  if (new Date().getDay() !== 1 && dayKey(c.at) !== dayKey()) return '';
   const done = c.goals.filter((g) => g.done).length;
-  return `<button class="card coach-card" data-a="coachOpen">
+  return `<button class="card coach-card" data-a="coachOpen" data-v="${S.coach.length - 1}">
     <div class="row"><span class="coach-score">${Math.round(c.score)}<small>/10</small></span><div class="grow" style="text-align:left"><b>🧠 ${esc(c.title || 'Разбор недели')}</b><div class="dim">${esc(c.summary).slice(0, 110)}${c.summary.length > 110 ? '…' : ''}</div></div><span>›</span></div>
     <div class="dim" style="margin-top:8px;text-align:left">🎯 Цели недели: ${done} / ${c.goals.length} · +30 XP за каждую</div>
   </button>`;
 }
-function openCoach() {
-  const c = lastCoach();
+function openCoach(idx) {
+  if (idx == null || !S.coach || !S.coach[idx]) idx = (S.coach || []).length - 1;
+  UI.coachIdx = idx;
+  const c = idx >= 0 ? S.coach[idx] : null;
   if (!c) {
     openSheet(() => `${sheetHead('🧠 Тренер недели')}
     <p>Каждый понедельник тренер разбирает прошлую неделю: питание, сон, спорт и бюджет — и даёт 3 цели на новую неделю.</p>
@@ -481,9 +491,10 @@ Object.assign(A, {
     UI.tab = 'money'; UI.mAcc = null; UI.mOff = 0;
     act(() => S.tx.push(...add), `📥 Добавлено ${add.length} операций`, () => act(() => { S.tx = S.tx.filter((x) => !ids.includes(x.id)); }, 'Отменено'));
   },
-  coachOpen: openCoach,
+  coachOpen: (el) => openCoach(el && el.dataset && el.dataset.v != null ? +el.dataset.v : null),
+  aiSheet: openAiSheet,
   coachApply: (el) => {
-    const c = lastCoach(); const a = c && (c.adjust || [])[+el.dataset.v]; if (!a) return;
+    const c = S.coach[UI.coachIdx] || lastCoach(); const a = c && (c.adjust || [])[+el.dataset.v]; if (!a) return;
     const key = { kcal: 'kcalOverride', protein: 'proteinOverride', water: 'waterOverride' }[a.param]; if (!key) return;
     const v = Math.round(+a.value); if (!(v > 0)) return;
     act(() => { S.profile[key] = v; }, `📈 Новая норма: ${fmt(v)} ${a.param === 'kcal' ? 'ккал' : a.param === 'protein' ? 'г белка' : 'мл воды'}`);
@@ -491,7 +502,7 @@ Object.assign(A, {
   },
   coachNow: async () => { closeSheet(); await coachRun(true); if (lastCoach()) openCoach(); },
   coachGoal: (el) => {
-    const c = lastCoach(); const g = c.goals[+el.dataset.v];
+    const c = S.coach[UI.coachIdx] || lastCoach(); const g = c.goals[+el.dataset.v];
     const willDone = !g.done;
     act(() => { g.done = willDone; }, willDone ? '🎯 Цель выполнена!' : null);
     refreshSheet();

@@ -276,3 +276,5 @@ textarea { resize: none; }
 [data-theme="soft"] .btn.gold { background: linear-gradient(135deg, #b4426b, #b84c76); }
 [data-theme="soft"] .pill.buff { color: #1a6e4f; }
 .seg button { min-height: 36px; }
+
+.coach-mini { font-weight: 900; color: var(--gold); border: 2px solid var(--gold); }

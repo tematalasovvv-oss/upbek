@@ -121,6 +121,7 @@ language sql security definer set search_path = public as $$
   select b.name, b.avatar, b.level, b.streak, b.s7, b.s30, b.today, b.detail, b.updated_at, b.owner = upbek_owner(p_token)
   from upbek_board b
   where b.grp = p_group
+    and b.updated_at > now() - interval '30 days'
     and exists (select 1 from upbek_board m where m.grp = p_group and m.owner = upbek_owner(p_token))
   order by b.s7 desc nulls last
   limit 200
