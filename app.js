@@ -496,6 +496,8 @@ function renderHero() {
   </div>
 
 
+  ${typeof mateCycleCard === 'function' ? mateCycleCard() : ''}
+
   <h2>Достижения <small>${achs.length} / ${ACH.length}</small></h2>
   ${achs.length ? `<div class="chips">${achs.map((a) => `<span class="chip on">${a[1]} ${esc(achName(a, g))}</span>`).join('')}</div>` : '<div class="dim">Сделай первую запись — и получишь первое достижение 🌱</div>'}
   <button class="btn ghost sm" style="margin-top:10px" data-a="achSheet">Все достижения ›</button>
@@ -546,8 +548,6 @@ function renderBody() {
   </div>
   ${isToday ? '' : `<div class="hint" style="margin-top:8px">Записи добавятся на ${dayLabel(key).toLowerCase()}</div>`}
 
-  ${typeof cycleCard === 'function' ? cycleCard() : ''}
-
   <h2>Съедено <small>${fmt(sum(food, foodKcal))} ккал · ${Math.round(sum(food, foodProt))} г белка</small></h2>
   <div class="card list">
     ${food.length ? food.map((e) => `<button class="item" data-a="editFood" data-v="${e.id}"><span class="ii">${esc(e.ic || '🍽️')}</span><span class="grow"><div class="it">${esc(e.name)}${e.qty !== 1 ? ` × ${round1(e.qty)}` : ''}</div><div class="is">${mealName(e.t)} · ${hhmm(e.t)} · Б ${Math.round(foodProt(e))} · Ж ${Math.round((e.f || 0) * e.qty)} · У ${Math.round((e.c || 0) * e.qty)}${e.hyd ? ` · 💧 ${fmt(e.hyd * e.qty)} мл` : ''}${e.ai ? ' · ✨' : ''}</div></span><span class="iv">${fmt(foodKcal(e))}</span></button>`).join('') : '<div class="empty">Пока пусто. Нажми «Еда» выше.</div>'}
@@ -562,6 +562,8 @@ function renderBody() {
 
   <h2>Сон</h2>
   ${sleepCard(key)}
+
+  ${typeof cycleCard === 'function' ? cycleCard() : ''}
 
   <h2>Вес <small>${S.profile.goal !== 'keep' ? `с начала ${wp.delta > 0 ? '+' : ''}${wp.delta} кг` : ''}</small></h2>
   <div class="card">
@@ -1157,7 +1159,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.6</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.7</p>
   `;
 }
 function openAchSheet() {

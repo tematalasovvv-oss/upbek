@@ -149,6 +149,10 @@ function renderCycleCal() {
     <div class="split" style="margin-top:0"><div><span>Средний цикл</span><b class="num">${st.cycleLen} дн.</b></div><div><span>Месячные</span><b class="num">${st.periodLen} дн.</b></div></div>
     <div class="dim" style="margin-top:8px">Последние циклы: ${cyc}${st.vari != null ? ` · ${st.vari <= 7 ? '✓ регулярный' : '⚠️ нерегулярный — разброс ' + st.vari + ' дн.'}` : ''}</div>
   </div>
+  <div class="card">
+    <label class="checkrow"><input type="checkbox" ${CY().share ? 'checked' : ''} data-a="cyShare"> 💑 Делиться фазой цикла с партнёром</label>
+    <div class="dim">${S.pair && S.pair.mate ? `Партнёр (${esc(S.pair.mate.name)}) увидит утром только фазу и совет, как тебя поддержать. Симптомы, даты и заметки не передаются.` : 'Станет доступно, когда вы свяжетесь в «Паре» (Ещё → Настройки → Пара).'}</div>
+  </div>
   <div class="row"><button class="btn ghost sm" data-a="cySetup">⚙️ Настройки цикла</button><button class="btn ghost sm" data-a="cyOff">Выключить</button></div>
   <div class="note">Нажми на день, чтобы отметить выделения, симптомы и настроение. Прогноз — оценка, не метод контрацепции. Если задержка больше 7 дней или боли сильные — к врачу.</div>`;
 }
@@ -191,6 +195,11 @@ Object.assign(A, {
     act(() => { const p = CY().periods.find((x) => x.start === st.last.start); p.end = dayKey(); normPeriods(); }, '✓ Месячные закончились');
   },
   cyCal: openCycleCal,
+  cyShare: () => {
+    const c = CY(); c.share = !c.share; save();
+    if (typeof pairSync === 'function') pairSync(true).catch(() => {});
+    refreshSheet(); toast(c.share ? '💑 Партнёр будет видеть фазу цикла' : 'Фаза цикла больше не передаётся');
+  },
   cyMonth: (el) => { UI.cyM = (UI.cyM || 0) + +el.dataset.v; refreshSheet(); },
   cyDay: (el) => openCycleDay(el.dataset.v),
   cyFlow: (el) => {

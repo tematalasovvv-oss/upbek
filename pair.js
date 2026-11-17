@@ -28,9 +28,16 @@ function weekStats(off) {
   r.avg = r.n ? Math.round(tot / r.n) : 0;
   return r;
 }
+// фаза цикла для партнёра — только с согласия и без подробностей
+function cycleShare() {
+  if (typeof cycleOn !== 'function' || !cycleOn() || !CY().share) return null;
+  const st = cycleStats(); if (!st.last) return null;
+  const ph = st.phase[2] === 'late' ? 'care' : st.phase[2];
+  return { ph, day: st.inPeriod ? st.cycleDay : null, next: ph === 'pms' && st.toNext > 0 ? st.toNext : null };
+}
 function pairSummary() {
   const g = game();
-  return { lvl: g.L, avatar: rankOf(g.L).ic, streak: g.streak, today: dayPct(dayKey()).total, wk: weekStats(0), lw: weekStats(-1), stake: (S.pair && S.pair.stake) || '', stakeAt: (S.pair && S.pair.stakeAt) || 0 };
+  return { cy: cycleShare(), lvl: g.L, avatar: rankOf(g.L).ic, streak: g.streak, today: dayPct(dayKey()).total, wk: weekStats(0), lw: weekStats(-1), stake: (S.pair && S.pair.stake) || '', stakeAt: (S.pair && S.pair.stakeAt) || 0 };
 }
 async function pairSync(force) {
   if (!pairOn()) return;
@@ -53,6 +60,26 @@ async function pairSync(force) {
     }
   }
   save(true);
+}
+
+/* ---- совет по циклу партнёрши: первые 30 минут после первого входа за день ---- */
+const MATE_CY = {
+  period: ['🩸', (n, s) => `У ${n} месячные${s.day ? ` (день ${s.day})` : ''}`, 'Будь внимательнее и мягче. Тепло, чай, грелка, меньше планов на вечер. Шоколадка и забота сейчас очень кстати 🍫'],
+  pms: ['🌧️', (n, s) => `У ${n} скоро месячные${s.next ? ` (через ${s.next} дн.)` : ''}`, 'Возможны усталость и перепады настроения. Больше терпения, не спорь по мелочам, предложи помощь по дому.'],
+  foll: ['🌤️', (n) => `У ${n} энергия растёт`, 'Отличное время для новых планов, активного свидания и совместной тренировки.'],
+  fertile: ['✨', (n) => `У ${n} пик энергии и настроения`, 'Самое время для яркого свидания или совместной активности — прогулка, каток, горы.'],
+  ovu: ['✨', (n) => `У ${n} пик энергии и настроения`, 'Самое время для яркого свидания или совместной активности — прогулка, каток, горы.'],
+  lut: ['🌙', (n) => `У ${n} энергия идёт на спад`, 'Больше уюта и спокойных вечеров. Хороший момент приготовить вместе что-то вкусное.'],
+  care: ['💗', (n) => `${n} может быть непросто сегодня`, 'Будь внимательнее: спроси, как она себя чувствует, и предложи поддержку.'],
+};
+function markFirstOpen() { const k = dayKey(); if (!S.dayFirst || S.dayFirst.d !== k) { S.dayFirst = { d: k, at: Date.now() }; save(true); } }
+function mateCycleCard() {
+  const m = S.pair && S.pair.mate; const cy = m && m.s && m.s.cy;
+  if (!cy || !MATE_CY[cy.ph]) return '';
+  markFirstOpen();
+  if (Date.now() - S.dayFirst.at > 30 * 60000 || S.mateCyHide === dayKey()) return '';
+  const [ic, title, tip] = MATE_CY[cy.ph];
+  return `<div class="card prompt mate-cy"><div class="row"><span style="font-size:28px">${ic}</span><div class="grow"><b>${esc(title(m.name, cy))}</b><div class="dim" style="margin-top:2px">${tip}</div></div><button class="x" data-a="mateCyHide">✕</button></div></div>`;
 }
 
 /* ---- главная: полученные подбадривания ---- */
@@ -153,9 +180,13 @@ Object.assign(A, {
     try { await rpc('nudge_send', { p_token: S.cloud.token, p_pair: S.pair.code, p_kind: nd[0] }); toast(`${nd[1]} Отправлено: «${nd[2]}»`); }
     catch (e) { toast(/too many/.test(e.message) ? 'На сегодня хватит подбадриваний 😉' : '⚠️ ' + esc(e.message)); }
   },
+  mateCyHide: () => { S.mateCyHide = dayKey(); save(true); render(); },
   nudgeSeen: (el) => { const i = +el.dataset.v; S.pair.inbox.splice(i, 1); save(); render(); },
 });
 
 // обновляем пару при открытии приложения и после сохранения в облако (не чаще раза в 10 минут)
-setTimeout(() => pairSync(false).then(() => render()).catch(() => {}), 5000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) pairSync(false).then(() => { if (!UI.sheetFn) render(); }).catch(() => {}); });
+markFirstOpen();
+// с утра данные партнёра должны быть свежими — первое открытие дня синхронизирует сразу
+setTimeout(() => pairSync(!S.pair || !S.pair.synced || dayKey(S.pair.synced) !== dayKey()).then(() => { if (!UI.sheetFn) render(); }).catch(() => {}), 1500);
+setInterval(() => { if (!document.hidden && !UI.sheetFn && UI.tab === 'hero' && S.dayFirst && Date.now() - S.dayFirst.at > 30 * 60000 && document.querySelector('.mate-cy')) render(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { markFirstOpen(); pairSync(!S.pair || !S.pair.synced || dayKey(S.pair.synced) !== dayKey()).then(() => { if (!UI.sheetFn) render(); }).catch(() => {}); } });
