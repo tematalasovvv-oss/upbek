@@ -70,13 +70,13 @@ async function pairSync(force) {
 
 /* ---- совет по циклу партнёрши: первые 30 минут после первого входа за день ---- */
 const MATE_CY = {
-  period: ['🩸', (n, s) => `У ${n} месячные${s.day ? ` (день ${s.day})` : ''}`, 'Будь внимательнее и мягче. Тепло, чай, грелка, меньше планов на вечер. Шоколадка и забота сейчас очень кстати 🍫'],
-  pms: ['🌧️', (n, s) => `У ${n} скоро месячные${s.next ? ` (через ${s.next} дн.)` : ''}`, 'Возможны усталость и перепады настроения. Больше терпения, не спорь по мелочам, предложи помощь по дому.'],
-  foll: ['🌤️', (n) => `У ${n} энергия растёт`, 'Отличное время для новых планов, активного свидания и совместной тренировки.'],
-  fertile: ['✨', (n) => `У ${n} пик энергии и настроения`, 'Самое время для яркого свидания или совместной активности — прогулка, каток, горы.'],
-  ovu: ['✨', (n) => `У ${n} пик энергии и настроения`, 'Самое время для яркого свидания или совместной активности — прогулка, каток, горы.'],
-  lut: ['🌙', (n) => `У ${n} энергия идёт на спад`, 'Больше уюта и спокойных вечеров. Хороший момент приготовить вместе что-то вкусное.'],
-  care: ['💗', (n) => `${n} может быть непросто сегодня`, 'Будь внимательнее: спроси, как она себя чувствует, и предложи поддержку.'],
+  period: ['🩸', (n, s) => `${n}: месячные${s.day ? ` (день ${s.day})` : ''}`, 'Будь внимательнее и мягче. Тепло, чай, грелка, меньше планов на вечер. Шоколадка и забота сейчас очень кстати 🍫'],
+  pms: ['🌧️', (n, s) => `${n}: скоро месячные${s.next ? ` (через ${s.next} дн.)` : ''}`, 'Возможны усталость и перепады настроения. Больше терпения, не спорь по мелочам, предложи помощь по дому.'],
+  foll: ['🌤️', (n) => `${n}: энергия растёт`, 'Отличное время для новых планов, активного свидания и совместной тренировки.'],
+  fertile: ['✨', (n) => `${n}: пик энергии и настроения`, 'Самое время для яркого свидания или совместной активности — прогулка, каток, горы.'],
+  ovu: ['✨', (n) => `${n}: пик энергии и настроения`, 'Самое время для яркого свидания или совместной активности — прогулка, каток, горы.'],
+  lut: ['🌙', (n) => `${n}: энергия идёт на спад`, 'Больше уюта и спокойных вечеров. Хороший момент приготовить вместе что-то вкусное.'],
+  care: ['💗', (n) => `${n}: сегодня может быть непросто`, 'Будь внимательнее: спроси, как она себя чувствует, и предложи поддержку.'],
 };
 function markFirstOpen() { const k = dayKey(); if (!S.dayFirst || S.dayFirst.d !== k) { S.dayFirst = { d: k, at: Date.now() }; save(true); } }
 function mateCycleCard() {
@@ -183,7 +183,7 @@ function renderPair() {
   const ds = duelState(), lastR = duelLastResult();
   const duelBlock = ds.st === 'on' ? duelVs(ds)
     : ds.st === 'in' ? `<div style="text-align:center"><b>${esc(m.name)} вызывает тебя на дуэль</b>${ds.stake ? `<div class="dim">Ставка: «${esc(ds.stake)}»</div>` : ''}</div><div class="row" style="margin-top:10px"><button class="btn ghost" data-a="duelDecline">Отказаться</button><button class="btn gold" data-a="duelAccept">⚔️ Принять</button></div>`
-    : ds.st === 'out' ? `<div style="text-align:center"><b>⏳ Ждём ответа ${esc(m.name)}</b>${ds.stake ? `<div class="dim">Ставка: «${esc(ds.stake)}»</div>` : ''}</div><button class="btn ghost sm" style="margin-top:10px" data-a="duelCancel">Отменить вызов</button>`
+    : ds.st === 'out' ? `<div style="text-align:center"><b>⏳ Вызов отправлен — ждём ответа</b>${ds.stake ? `<div class="dim">Ставка: «${esc(ds.stake)}»</div>` : ''}</div><button class="btn ghost sm" style="margin-top:10px" data-a="duelCancel">Отменить вызов</button>`
     : `<div class="dim" style="text-align:center">${ds.st === 'declined' ? `${esc(m.name)} отказался(ась). ` : ''}Брось вызов на эту неделю: побеждает тот, у кого выше средний процент дня с понедельника по воскресенье. Дуэль начнётся, когда ${esc(m.name)} примет вызов.</div><button class="btn gold" style="margin-top:10px" data-a="duelInvite">⚔️ Бросить вызов</button>`;
   const qRow = (q) => {
     const a = me.wk[q.key] || 0, b = sameWk ? (+ms.wk[q.key] || 0) : 0, done = S.pairDone[`${me.wk.key}:${q.id}`];
@@ -197,7 +197,7 @@ function renderPair() {
     <div><span>${esc(m.name)} · сегодня</span><b class="num">${+ms.today || 0}%</b><div class="dim">ур. ${+ms.lvl || 1} · 🔥 ${+ms.streak || 0}</div></div>
   </div>
 
-  ${(() => { const cy = ms.cy; if (!cy || !MATE_CY[cy.ph]) return ''; const [ic, title, tip] = MATE_CY[cy.ph]; return `<h3 class="vh">🌸 Цикл ${esc(m.name)}</h3><div class="card"><div class="row"><span style="font-size:26px">${ic}</span><div class="grow"><b>${esc(title(m.name, cy))}</b><div class="dim" style="margin-top:2px">${tip}</div></div></div></div>`; })()}
+  ${(() => { const cy = ms.cy; if (!cy || !MATE_CY[cy.ph]) return ''; const [ic, title, tip] = MATE_CY[cy.ph]; return `<h3 class="vh">🌸 Цикл · ${esc(m.name)}</h3><div class="card"><div class="row"><span style="font-size:26px">${ic}</span><div class="grow"><b>${esc(title(m.name, cy))}</b><div class="dim" style="margin-top:2px">${tip}</div></div></div></div>`; })()}
   <h3 class="vh">⚔️ Дуэль недели</h3>
   <div class="card">
     ${duelBlock}
@@ -207,7 +207,7 @@ function renderPair() {
   <h3 class="vh">🤝 Парные квесты недели</h3>
   <div class="card">${PAIR_QUESTS.map(qRow).join('')}</div>
 
-  <h3 class="vh">💌 Подбодрить ${esc(m.name)}</h3>
+  <h3 class="vh">💌 Подбодрить</h3>
   <div class="nudges">${NUDGES.map(([k, ic, n]) => `<button class="tile" data-a="nudge" data-v="${k}"><span class="ic">${ic}</span><span class="tn">${n}</span></button>`).join('')}</div>
 
   <div class="row" style="margin-top:12px"><button class="btn ghost sm" data-a="pairRefresh">🔄 Обновить</button><button class="btn ghost sm" data-a="pairLeave">Выйти из пары</button></div>
@@ -229,7 +229,7 @@ Object.assign(A, {
     const code = (await askText('🔑 Код пары от партнёра', 'Например: K7M2QX')).toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code.length !== 6) { if (code) toast('Код — 6 символов'); return; }
     S.pair = { code, name, inbox: [] }; save();
-    try { await pairSync(true); toast(S.pair.mate ? `💑 Вы в паре с ${esc(S.pair.mate.name)}!` : '💑 Код принят — ждём партнёра'); }
+    try { await pairSync(true); toast(S.pair.mate ? `💑 Пара создана: ты и ${esc(S.pair.mate.name)}!` : '💑 Код принят — ждём партнёра'); }
     catch (e) { const full = /pair full/.test(e.message); S.pair = null; save(); toast(full ? '⚠️ В этой паре уже двое' : '⚠️ ' + esc(e.message)); }
     refreshSheet();
   },
@@ -240,7 +240,7 @@ Object.assign(A, {
   },
   duelInvite: async () => {
     const m = S.pair && S.pair.mate; if (!m) return;
-    const stake = await askText(`⚔️ <b>Дуэль недели с ${esc(m.name)}</b><br><span class="dim">Ставка — по желанию. Дуэль начнётся, когда партнёр примет вызов.</span>`, 'Ставка, напр.: проигравший готовит ужин', ['Проигравший готовит ужин', 'Проигравший моет посуду', 'Массаж 15 минут', 'Кино на выбор победителя'], { no: 'Отмена', yes: '⚔️ Вызвать', cancel: true, max: 60 });
+    const stake = await askText(`⚔️ <b>Дуэль недели · ты VS ${esc(m.name)}</b><br><span class="dim">Ставка — по желанию. Дуэль начнётся, когда партнёр примет вызов.</span>`, 'Ставка, напр.: проигравший готовит ужин', ['Проигравший готовит ужин', 'Проигравший моет посуду', 'Массаж 15 минут', 'Кино на выбор победителя'], { no: 'Отмена', yes: '⚔️ Вызвать', cancel: true, max: 60 });
     if (stake == null) return;
     S.pair.duel = { wk: wkKey(), role: 'inv', at: Date.now(), stake: stake.slice(0, 60) }; S.pair.duelSeen = (duelLastResult() || {}).wk || S.pair.duelSeen; save();
     await duelPush('⚔️ Вызов отправлен — ждём ответа');
@@ -258,7 +258,7 @@ Object.assign(A, {
     const nd = NUDGES.find((n) => n[0] === el.dataset.v); if (!nd) return;
     let msg = null;
     if (nd[0] === 'msg') {
-      msg = await askText(`✉️ Сообщение для ${esc(S.pair.mate ? S.pair.mate.name : 'партнёра')}`, 'Напиши пару слов…', [], { no: 'Отмена', yes: 'Отправить', cancel: true, max: 120 });
+      msg = await askText(`✉️ Сообщение партнёру${S.pair.mate ? ' · ' + esc(S.pair.mate.name) : ''}`, 'Напиши пару слов…', [], { no: 'Отмена', yes: 'Отправить', cancel: true, max: 120 });
       if (!msg) return;
     } else if (tooFast()) return;
     try { await rpc('nudge_send', { p_token: S.cloud.token, p_pair: S.pair.code, p_kind: nd[0], p_msg: msg }); toast(`${nd[1]} Отправлено${msg ? '' : `: «${nd[2]}»`}`); }

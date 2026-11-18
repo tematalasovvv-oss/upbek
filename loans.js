@@ -50,7 +50,7 @@ function loansSection() {
     if (L.kind === 'card') return `<button class="item" data-a="loanOpen" data-v="${L.id}"><span class="ii">💳</span><span class="grow"><div class="it">${esc(L.name)}</div><div class="is">долг ${fmt(s.debt)} из ${fmt(s.limit)} · доступно ${fmt(s.avail)}${s.next ? ' · платёж ' + whenText(s.next.d) : ''}</div>${bar(s.debt, s.limit || 1, 'red')}</span><span>›</span></button>`;
     return `<button class="item" data-a="loanOpen" data-v="${L.id}"><span class="ii">🏦</span><span class="grow"><div class="it">${esc(L.name)}${a ? ` <span class="dim">· ${esc(a.name)}</span>` : ''}</div><div class="is">осталось ${fmt(s.left)}${s.next ? ` · ${fmt(s.next.pay)} ${whenText(s.next.d)}` : s.left ? '' : ' · ✓ погашен'}</div>${bar(s.paid, s.total || 1, 'green')}</span><span>›</span></button>`;
   }).join('')}</div>` : '<div class="card empty">Добавь кредит или кредитную карту — будут видны остаток, график и напоминания о платежах.</div>'}
-  <div class="row" style="margin-top:10px"><button class="btn ghost" data-a="loanAdd" data-v="loan">＋ Кредит</button><button class="btn ghost" data-a="loanAdd" data-v="card">＋ Кредитная карта</button></div>`;
+  <div class="row" style="margin-top:10px"><button class="btn ghost" data-a="loanAdd" data-v="loan">＋ Кредит</button><button class="btn ghost" data-a="loanAdd" data-v="card">＋ Кредитка</button></div>`;
 }
 
 /* ---- добавление / изменение ---- */

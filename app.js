@@ -748,7 +748,7 @@ function dayPicker() {
     <label class="chip datebtn ${custom ? 'on' : ''}">📅 ${custom ? dayLabel(viewDayKey()) : 'Дата'}<input type="date" id="fsDate" max="${dayKey()}" value="${viewDayKey()}"></label></div>`;
 }
 function renderFoodSheet() {
-  const head = `<div class="grabber"></div><div class="row" style="margin-bottom:12px"><div class="seg grow">${FS_TABS.map(([k, l]) => `<button class="${UI.fs === k ? 'on' : ''}" data-a="fs" data-v="${k}">${l}</button>`).join('')}</div><button class="x" data-a="close">✕</button></div>`
+  const head = `<div class="grabber"></div><div class="row" style="margin-bottom:12px"><div class="seg grow stack">${FS_TABS.map(([k, l]) => { const [ic, ...w] = l.split(' '); return `<button class="${UI.fs === k ? 'on' : ''}" data-a="fs" data-v="${k}"><span class="si">${ic}</span><span class="sl">${w.join(' ')}</span></button>`; }).join('')}</div><button class="x" data-a="close">✕</button></div>`
     + (UI.fs !== 'sleep' ? dayPicker() : '');
   if (UI.fs === 'water') {
     const d = buckets()[viewDayKey()] || emptyDay(); const st = dayStats(d); const need = waterNeed(st);
@@ -789,7 +789,7 @@ function renderFoodSheet() {
   const anyUsage = Object.values(S.usage).some((n) => n > 0);
   return `${head}
   ${lt ? `<div class="linkbar"><span style="font-size:24px">${catOf('exp', lt.cat).ic}</span><span class="grow"><b>${catOf('exp', lt.cat).n} · ${fmt(lt.amount)} сом</b><br><span class="dim">${linked.length ? `Отмечено: ${linked.length} · ${fmt(sum(linked, foodKcal))} ккал` : 'Что ты съел? Отметь только своё'}</span></span><button class="btn sm ${linked.length ? 'gold' : 'ghost'}" data-a="close">${linked.length ? 'Готово' : 'Пропустить'}</button></div>` : ''}
-  <div class="airow"><button class="btn gold" data-a="aiPhoto">📷 Фото еды / штрих-код</button><button class="btn ghost" data-a="aiText">✨ Посчитать ИИ</button></div>
+  <div class="airow"><button class="btn gold" data-a="aiPhoto">📷 Фото / штрих-код</button><button class="btn ghost" data-a="aiText">✨ Посчитать ИИ</button></div>
   <input id="foodText" placeholder="Напиши: 2 яйца, лепёшка, чай" autocomplete="off" enterkeyhint="done">
   <div id="foodParse" class="parse"></div>
   ${anyUsage ? '<div class="dim" style="margin:10px 0 -2px">⭐ Сначала — то, что ты ешь чаще</div>' : ''}
@@ -1269,7 +1269,7 @@ function renderMe() {
   <h2>⚙️ Настройки</h2>
   <div class="card list">
     <button class="item" data-a="profile"><span class="ii">👤</span><span class="grow"><div class="it">Настройки профиля</div><div class="is">Вес, рост, цель, свои нормы</div></span><span>›</span></button>
-    <button class="item" data-a="pairOpen"><span class="ii">💑</span><span class="grow"><div class="it">Пара</div><div class="is">${S.pair && S.pair.mate ? 'Вы с ' + esc(S.pair.mate.name) + ' · дуэль и квесты' : S.pair && S.pair.code ? 'Ждём партнёра · код ' + esc(S.pair.code) : 'Дуэль недели, парные квесты, подбодрить'}</div></span><span>›</span></button>
+    <button class="item" data-a="pairOpen"><span class="ii">💑</span><span class="grow"><div class="it">Пара</div><div class="is">${S.pair && S.pair.mate ? 'Партнёр: ' + esc(S.pair.mate.name) + ' · дуэль и квесты' : S.pair && S.pair.code ? 'Ждём партнёра · код ' + esc(S.pair.code) : 'Дуэль недели, парные квесты, подбодрить'}</div></span><span>›</span></button>
     <button class="item" data-a="aiSheet"><span class="ii">✨</span><span class="grow"><div class="it">ИИ (Gemini)</div><div class="is">${typeof aiReady === 'function' && aiReady() ? 'Подключён · разборы недели' : 'Не подключён'}</div></span><span>›</span></button>
     <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${achList().filter((a) => g.ach.includes(a[0])).length} из ${achList().length}</div></span><span>›</span></button>
     <button class="item" data-a="entrySheet"><span class="ii">✍️</span><span class="grow"><div class="it">Добавление записей</div><div class="is">${askQtyOn() ? 'Спрашивать количество еды' : 'В 1 касание, без вопросов'}</div></span><span>›</span></button>
@@ -1278,7 +1278,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.18</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.19</p>
   `;
 }
 function openAchSheet() {
