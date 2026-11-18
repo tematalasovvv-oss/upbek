@@ -536,8 +536,8 @@ function promptCards() {
 /* ---------- Герой ---------- */
 // БЖУ одной линией: три отрезка (белки · жиры · углеводы), каждый заполняется до своей нормы
 function macroBar(st, t) {
-  const seg = (v, n, cls) => `<span class="bar ${cls}"><i style="width:${clamp(n ? (v / n) * 100 : 0, 0, 100)}%"></i></span>`;
-  return `<div class="mbar">${seg(st.prot, t.protein, 'red')}${seg(st.fat, t.fat, 'orange')}${seg(st.carb, t.carbs, 'violet')}</div>`;
+  const w = (v, n) => clamp(n ? (v / n) * 100 : 0, 0, 100);
+  return `<div class="mbar3" role="img" aria-label="Белки ${Math.round(w(st.prot, t.protein))}%, жиры ${Math.round(w(st.fat, t.fat))}%, углеводы ${Math.round(w(st.carb, t.carbs))}%"><i class="red" style="width:${w(st.prot, t.protein)}%"></i><i class="orange" style="width:${w(st.fat, t.fat)}%"></i><i class="violet" style="width:${w(st.carb, t.carbs)}%"></i></div>`;
 }
 function macroLegend(st, t) {
   return `<span class="mleg"><span><i class="md red"></i>Б <b class="num">${Math.round(st.prot)}</b>/${t.protein}</span><span><i class="md orange"></i>Ж <b class="num">${Math.round(st.fat)}</b>/${t.fat}</span><span><i class="md violet"></i>У <b class="num">${Math.round(st.carb)}</b>/${t.carbs}</span></span>`;
@@ -1263,7 +1263,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.16</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.17</p>
   `;
 }
 function openAchSheet() {

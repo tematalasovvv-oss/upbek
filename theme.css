@@ -348,3 +348,18 @@ textarea { resize: none; }
 [data-theme="soft"] .bar.violet > i { background: linear-gradient(90deg, #8f6fc2, #b9a0e0); }
 [data-theme="soft"] .bar.red > i { background: linear-gradient(90deg, #c73e5e, #e9819a); }
 @media (max-width: 360px) { .mleg { gap: 5px; font-size: 10px; } }
+
+/* БЖУ v3.17: одна дорожка, три тонкие линии идут вместе и чуть заходят друг на друга */
+.mbar3 { margin-top: 5px; padding: 1px; background: #0b0e1d; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; display: flex; flex-direction: column; }
+.mbar3 > i { display: block; height: 4px; min-width: 0; border-radius: 4px; transition: width .5s ease; opacity: .92; }
+.mbar3 > i + i { margin-top: -1px; }
+.mbar3 > i.red { background: linear-gradient(90deg, #e04757, var(--red)); }
+.mbar3 > i.orange { background: linear-gradient(90deg, #e9862a, var(--orange, #ff9f43)); }
+.mbar3 > i.violet { background: linear-gradient(90deg, var(--violet), #b49cff); }
+[data-theme="soft"] .mbar3 { background: #f8e3ea; border-color: #f0d4de; }
+[data-theme="soft"] .mbar3 > i.red { background: linear-gradient(90deg, #c73e5e, #e9819a); }
+[data-theme="soft"] .mbar3 > i.orange { background: linear-gradient(90deg, #d9803f, #f0b27f); }
+[data-theme="soft"] .mbar3 > i.violet { background: linear-gradient(90deg, #8f6fc2, #b9a0e0); }
+[data-theme="comic"] .mbar3 { background: #000; border: 2px solid var(--ink); border-radius: 2px; }
+[data-theme="comic"] .mbar3 > i { border-radius: 0; opacity: 1; }
+[data-theme="comic"] .mbar3 > i.red { background: var(--red); } [data-theme="comic"] .mbar3 > i.orange { background: var(--orange); } [data-theme="comic"] .mbar3 > i.violet { background: var(--pink); }

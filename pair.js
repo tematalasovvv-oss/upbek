@@ -82,8 +82,11 @@ function markFirstOpen() { const k = dayKey(); if (!S.dayFirst || S.dayFirst.d !
 function mateCycleCard() {
   const m = S.pair && S.pair.mate; const cy = m && m.s && m.s.cy;
   if (!cy || !MATE_CY[cy.ph]) return '';
-  markFirstOpen();
-  if (Date.now() - S.dayFirst.at > 30 * 60000 || S.mateCyHide === dayKey()) return '';
+  // 30 минут считаем с момента, когда совет впервые появился сегодня (а не с первого открытия приложения):
+  // если партнёрша включила доступ днём, совет всё равно будет виден
+  const k = dayKey();
+  if (!S.mateCyFirst || S.mateCyFirst.d !== k) { S.mateCyFirst = { d: k, at: Date.now() }; save(true); }
+  if (Date.now() - S.mateCyFirst.at > 30 * 60000 || S.mateCyHide === k) return '';
   const [ic, title, tip] = MATE_CY[cy.ph];
   return `<div class="card prompt mate-cy"><div class="row"><span style="font-size:28px">${ic}</span><div class="grow"><b>${esc(title(m.name, cy))}</b><div class="dim" style="margin-top:2px">${tip}</div></div><button class="x" data-a="mateCyHide">✕</button></div></div>`;
 }
@@ -194,6 +197,7 @@ function renderPair() {
     <div><span>${esc(m.name)} · сегодня</span><b class="num">${+ms.today || 0}%</b><div class="dim">ур. ${+ms.lvl || 1} · 🔥 ${+ms.streak || 0}</div></div>
   </div>
 
+  ${(() => { const cy = ms.cy; if (!cy || !MATE_CY[cy.ph]) return ''; const [ic, title, tip] = MATE_CY[cy.ph]; return `<h3 class="vh">🌸 Цикл ${esc(m.name)}</h3><div class="card"><div class="row"><span style="font-size:26px">${ic}</span><div class="grow"><b>${esc(title(m.name, cy))}</b><div class="dim" style="margin-top:2px">${tip}</div></div></div></div>`; })()}
   <h3 class="vh">⚔️ Дуэль недели</h3>
   <div class="card">
     ${duelBlock}
@@ -277,7 +281,7 @@ markFirstOpen();
 setTimeout(() => pairSync(!S.pair || !S.pair.synced || dayKey(S.pair.synced) !== dayKey()).then(() => { if (!UI.sheetFn) render(); }).catch(() => {}), 1500);
 setInterval(() => {
   if (document.hidden || UI.sheetFn || UI.tab !== 'hero') return;
-  const cyOld = S.dayFirst && Date.now() - S.dayFirst.at > 30 * 60000 && document.querySelector('.mate-cy');
+  const cyOld = S.mateCyFirst && Date.now() - S.mateCyFirst.at > 30 * 60000 && document.querySelector('.mate-cy');
   const nOld = S.pair && (S.pair.inbox || []).some((x) => !nudgeLive(x));
   if (cyOld || nOld) render();
 }, 60000);
