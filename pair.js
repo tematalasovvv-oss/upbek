@@ -197,7 +197,6 @@ function renderPair() {
     <div><span>${esc(m.name)} · сегодня</span><b class="num">${+ms.today || 0}%</b><div class="dim">ур. ${+ms.lvl || 1} · 🔥 ${+ms.streak || 0}</div></div>
   </div>
 
-  ${(() => { const cy = ms.cy; if (!cy || !MATE_CY[cy.ph]) return ''; const [ic, title, tip] = MATE_CY[cy.ph]; return `<h3 class="vh">🌸 Цикл · ${esc(m.name)}</h3><div class="card"><div class="row"><span style="font-size:26px">${ic}</span><div class="grow"><b>${esc(title(m.name, cy))}</b><div class="dim" style="margin-top:2px">${tip}</div></div></div></div>`; })()}
   <h3 class="vh">⚔️ Дуэль недели</h3>
   <div class="card">
     ${duelBlock}
@@ -209,6 +208,7 @@ function renderPair() {
 
   <h3 class="vh">💌 Подбодрить</h3>
   <div class="nudges">${NUDGES.map(([k, ic, n]) => `<button class="tile" data-a="nudge" data-v="${k}"><span class="ic">${ic}</span><span class="tn">${n}</span></button>`).join('')}</div>
+  ${(() => { const cy = ms.cy; if (!cy || !MATE_CY[cy.ph]) return ''; const [ic, title, tip] = MATE_CY[cy.ph]; return `<h3 class="vh">🌸 Цикл · ${esc(m.name)}</h3><div class="card"><div class="row"><span style="font-size:26px">${ic}</span><div class="grow"><b>${esc(title(m.name, cy))}</b><div class="dim" style="margin-top:2px">${tip}</div></div></div></div>`; })()}
 
   <div class="row" style="margin-top:12px"><button class="btn ghost sm" data-a="pairRefresh">🔄 Обновить</button><button class="btn ghost sm" data-a="pairLeave">Выйти из пары</button></div>
   <div class="dim" style="margin-top:6px">Код пары: ${esc(p.code)} · данные партнёра обновляются при открытии приложения</div>`;
