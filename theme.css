@@ -392,3 +392,7 @@ textarea { resize: none; }
   [data-theme="comic"] .grow > b.num { font-size: 21px; }
   .row > .btn { min-width: 0; }
 }
+/* единый ритм разделов в окнах (v3.21): заголовок раздела всегда отделён от блока выше */
+.sheet h3.vh { font-size: 15px; margin: 22px 0 8px; }
+.sheet h3.vh:first-child, .sheet .grabber + h3.vh { margin-top: 4px; }
+.nudges { margin-bottom: 12px; }
