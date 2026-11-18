@@ -200,6 +200,9 @@ const ACH = [
   ['streak30', '🌟', '30 дней подряд', (g) => g.best >= 30],
   ['feed7', '🍖', '7 дней в норме', (g) => g.kcalDays >= 7],
   ['prot7', '🥩', '7 дней белка', (g) => g.protDays >= 7],
+  ['fib1', '🌾', 'Первый день клетчатки', (g) => g.fiberDays >= 1],
+  ['fib7', '🥦', '7 дней клетчатки', (g) => g.fiberDays >= 7],
+  ['fib30', '🌳', '30 дней клетчатки', (g) => g.fiberDays >= 30],
   ['gym10', '🏋️', '10 тренировок', (g) => g.workouts >= 10],
   ['perfect', '✨', 'Идеальный день', (g) => g.perfect >= 1],
   ['kg1', '⚖️', (g) => (S.profile.goal === 'lose' ? '−1 кг' : '+1 кг массы'), (g) => S.profile.goal !== 'keep' && g.wp.gain >= 1],
@@ -230,8 +233,8 @@ const achName = (a, g) => (typeof a[2] === 'function' ? a[2](g) : a[2]);
 function game() {
   const b = buckets();
   const keys = Object.keys(b).sort();
-  let xp = 0, perfect = 0, kcalDays = 0, protDays = 0;
-  const todayK = dayKey();
+  let xp = 0, perfect = 0, kcalDays = 0, protDays = 0, fiberDays = 0;
+  const todayK = dayKey(), fibNeed = targets().fiber;
   for (const k of keys) {
     const d = b[k];
     xp += 0;
@@ -242,6 +245,7 @@ function game() {
     if (all) { xp += 25; perfect++; }
     if (q[0].done) kcalDays++;
     if (q[1].done) protDays++;
+    if (dayStats(d).fiber >= fibNeed) fiberDays++;
   }
   xp += sum(S.coach || [], (c) => (c.goals || []).filter((x) => x.done).length * 30);
   xp += Object.keys(S.pairDone || {}).length * 50; // парные квесты
@@ -259,7 +263,7 @@ function game() {
   const bal = balances();
   const total = sum(Object.values(bal), (x) => x);
   const g = {
-    xp, ...levelFromXp(xp), streak, best, perfect, kcalDays, protDays,
+    xp, ...levelFromXp(xp), streak, best, perfect, kcalDays, protDays, fiberDays,
     entries: S.food.length + S.tx.length + S.act.length + S.weights.length + S.sleep.length,
     goodSleep: S.sleep.filter((x) => sleepH(x) >= 7 && sleepH(x) <= 10).length,
     workouts: S.act.filter((a) => !a.steps && a.min >= 15).length,
@@ -415,7 +419,14 @@ function openEntrySheet() {
   <div class="card">
     <label class="checkrow"><input type="checkbox" ${askQtyOn() ? 'checked' : ''} data-a="prefAskQty"> 🍽️ Спрашивать количество при добавлении еды</label>
   </div>
-  <div class="note">Выключено — блюдо записывается в 1 касание стандартной порцией (роллы — 8 шт), количество можно поправить потом, нажав на запись.<br>Включено — после касания сразу выбираешь, сколько съел: например, 2 шт роллов или 150 г.</div>`);
+  <div class="note">Выключено — блюдо записывается в 1 касание стандартной порцией (роллы — 8 шт), количество можно поправить потом, нажав на запись.<br>Включено — после касания сразу выбираешь, сколько съел: например, 2 шт роллов или 150 г.</div>
+  <h3 class="vh">🥩 Вид БЖУ</h3>
+  <div class="mview">${[['lines', 'Три линии вместе', 'Б, Ж и У идут друг под другом в одной полосе'], ['split', 'Три отрезка', 'Полоса делится на три части: Б · Ж · У']].map(([id, n, d]) => {
+    const demo = { prot: 70, fat: 45, carb: 85, fiber: 0 }, dt = { protein: 100, fat: 60, carbs: 100 };
+    const on = ((S.prefs && S.prefs.macroView) || 'lines') === id;
+    const prev = S.prefs ? S.prefs.macroView : undefined; S.prefs = { ...(S.prefs || {}), macroView: id }; const html = macroBar(demo, dt); S.prefs.macroView = prev;
+    return `<button class="mview-opt${on ? ' on' : ''}" data-a="prefMacro" data-v="${id}" aria-pressed="${on}"><div class="row between"><b>${n}</b><span class="mv-check">${on ? '✓' : ''}</span></div>${html}<div class="dim">${d}</div></button>`;
+  }).join('')}</div>`);
 }
 function tooFast() {
   const now = Date.now();
@@ -537,6 +548,10 @@ function promptCards() {
 // БЖУ одной линией: три отрезка (белки · жиры · углеводы), каждый заполняется до своей нормы
 function macroBar(st, t) {
   const w = (v, n) => clamp(n ? (v / n) * 100 : 0, 0, 100);
+  if ((S.prefs && S.prefs.macroView) === 'split') {
+    const seg = (v, n, cls) => `<span class="bar ${cls}"><i style="width:${w(v, n)}%"></i></span>`;
+    return `<div class="mbar">${seg(st.prot, t.protein, 'red')}${seg(st.fat, t.fat, 'orange')}${seg(st.carb, t.carbs, 'violet')}</div>`;
+  }
   return `<div class="mbar3" role="img" aria-label="Белки ${Math.round(w(st.prot, t.protein))}%, жиры ${Math.round(w(st.fat, t.fat))}%, углеводы ${Math.round(w(st.carb, t.carbs))}%"><i class="red" style="width:${w(st.prot, t.protein)}%"></i><i class="orange" style="width:${w(st.fat, t.fat)}%"></i><i class="violet" style="width:${w(st.carb, t.carbs)}%"></i></div>`;
 }
 function macroLegend(st, t) {
@@ -774,7 +789,7 @@ function renderFoodSheet() {
   const anyUsage = Object.values(S.usage).some((n) => n > 0);
   return `${head}
   ${lt ? `<div class="linkbar"><span style="font-size:24px">${catOf('exp', lt.cat).ic}</span><span class="grow"><b>${catOf('exp', lt.cat).n} · ${fmt(lt.amount)} сом</b><br><span class="dim">${linked.length ? `Отмечено: ${linked.length} · ${fmt(sum(linked, foodKcal))} ккал` : 'Что ты съел? Отметь только своё'}</span></span><button class="btn sm ${linked.length ? 'gold' : 'ghost'}" data-a="close">${linked.length ? 'Готово' : 'Пропустить'}</button></div>` : ''}
-  <div class="airow"><button class="btn gold" data-a="aiPhoto">📷 Фото еды</button><button class="btn ghost" data-a="aiText">✨ Посчитать ИИ</button></div>
+  <div class="airow"><button class="btn gold" data-a="aiPhoto">📷 Фото еды / штрих-код</button><button class="btn ghost" data-a="aiText">✨ Посчитать ИИ</button></div>
   <input id="foodText" placeholder="Напиши: 2 яйца, лепёшка, чай" autocomplete="off" enterkeyhint="done">
   <div id="foodParse" class="parse"></div>
   ${anyUsage ? '<div class="dim" style="margin:10px 0 -2px">⭐ Сначала — то, что ты ешь чаще</div>' : ''}
@@ -1263,7 +1278,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.17</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.18</p>
   `;
 }
 function openAchSheet() {
@@ -1585,6 +1600,7 @@ const A = {
     <div class="card"><b>Стереть всё и начать заново</b><div class="dim" style="margin:4px 0 10px">Удалится вообще всё, включая профиль и счета — приложение начнёт с регистрации. Место в рейтинге и облачный код сохранятся.</div><button class="btn danger" data-a="reset">🗑️ Стереть всё</button></div>`),
   themeSheet: openThemeSheet,
   entrySheet: openEntrySheet,
+  prefMacro: (el) => { S.prefs = { ...(S.prefs || {}), macroView: el.dataset.v === 'split' ? 'split' : 'lines' }; save(); refreshSheet(); render(); },
   prefAskQty: () => { S.prefs = { ...(S.prefs || {}), askQty: !askQtyOn() }; save(); refreshSheet(); render(); toast(askQtyOn() ? '🍽️ Теперь при добавлении спрошу количество' : 'Еда снова добавляется в 1 касание'); },
   backupSheet: () => openBackupSheet(),
   theme: (el) => {

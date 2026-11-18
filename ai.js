@@ -101,6 +101,7 @@ const FOOD_SCHEMA = {
       },
     },
     comment: { type: 'STRING' },
+    barcode: { type: 'STRING' },
   },
   required: ['items'],
 };
@@ -110,7 +111,7 @@ function foodPrompt(hasImage, text) {
 Определи каждое отдельное блюдо или продукт${hasImage ? ' на фото' : ''}, оцени вес порции в граммах и посчитай для ЭТОЙ порции калории (kcal), белки (protein), жиры (fat), углеводы (carbs) и клетчатку (fiber) в граммах.
 Правила: названия короткие, по-русски; emoji — один подходящий эмодзи; числа — реалистичные средние значения для такой порции; каждое блюдо и напиток — отдельной строкой. Если на фото несколько одинаковых порций, перечисли их отдельно.
 water_ml — сколько воды организм получит из этой порции: чистая вода, чай, компот, молоко ≈ 90–100% объёма, кофе ≈ 85%, сладкие напитки ≈ 90%, супы ≈ 50% объёма; алкоголь, энергетики и твёрдая еда — 0.
-Если еды нет — верни пустой items и объясни в comment. В comment одной короткой фразой можно дать совет (цель пользователя: ${GOALS[p.goal] ? GOALS[p.goal].n.toLowerCase() : 'здоровое питание'}).${text ? `\nОписание от пользователя: «${text}»` : ''}`;
+Если на фото чётко виден штрих-код упаковки — перепиши цифры под ним в barcode (только цифры), иначе оставь barcode пустым. Если еды нет — верни пустой items и объясни в comment. В comment одной короткой фразой можно дать совет (цель пользователя: ${GOALS[p.goal] ? GOALS[p.goal].n.toLowerCase() : 'здоровое питание'}).${text ? `\nОписание от пользователя: «${text}»` : ''}`;
 }
 async function imageToB64(file, max = 800) {
   const url = URL.createObjectURL(file);
@@ -148,6 +149,11 @@ async function runFoodAi(input) {
   try {
     const r = await aiFood(input);
     UI.linkTx = ctx.link; UI.foodDay = ctx.day;
+    // ИИ прочитал цифры штрих-кода — сначала пробуем точные данные из базы продуктов
+    const code = String(r.barcode || '').replace(/\D/g, '');
+    if (!input.noBarcode && typeof okCode === 'function' && okCode(code)) {
+      try { const prod = bcFood(code) ? null : await offLookup(code); if (prod || bcFood(code)) { openBarcode(code, prod); return; } } catch (e) { /* нет в базе — считаем как фото еды */ }
+    }
     UI.aiRes = { items: (r.items || []).map((x) => ({ ...x, on: true, mult: 1 })), comment: r.comment || '', ctx };
     if (!UI.aiRes.items.length) { openSheet(() => `${sheetHead('✨ ИИ')}<p>${esc(r.comment || 'Не нашёл еду. Попробуй другое фото или опиши словами.')}</p><button class="btn" data-a="foodSheet" data-v="food" data-keep="1">Назад</button>`); return; }
     openSheet(renderAiResult);
@@ -228,10 +234,21 @@ Object.assign(A, {
     refreshSheet(); toast(`✨ Модель: ${esc(m)}`);
   },
   aiOff: () => { aiSaveCfg({}); closeSheet(); render(); toast('ИИ отключён'); },
+  // «Фото еды / штрих-код»: сначала ищем штрих-код прямо на телефоне, нет — считаем фото еды через ИИ
   aiPhoto: () => {
-    if (!aiReady()) { openAiSetup(); return; }
     const hint = ($('#foodText') && $('#foodText').value.trim()) || '';
     pickFiles('image/*', false, async (fs) => {
+      const ctx = { link: UI.linkTx, day: UI.foodDay };
+      aiLoading('Ищу штрих-код…');
+      let code = null;
+      try { code = await decodeBarcode(fs[0]); } catch (e) { /* сканер не загрузился — идём через ИИ */ }
+      UI.linkTx = ctx.link; UI.foodDay = ctx.day;
+      if (code) { openBarcode(code); return; }
+      if (!aiReady()) {
+        openSheet(() => `${sheetHead('📷 Фото еды / штрих-код')}<p class="muted" style="margin-top:0">Штрих-код на фото не нашёлся. Сфотографируй его ближе и ровнее — или введи цифры. Для фото блюда нужен ИИ.</p>
+        <button class="btn gold" data-a="aiPhoto">📷 Ещё раз</button><button class="btn ghost" style="margin-top:8px" data-a="bcManual">🔢 Ввести цифры штрих-кода</button><button class="btn ghost" style="margin-top:8px" data-a="aiSetup">✨ Подключить ИИ</button>`);
+        return;
+      }
       try { const image = await imageToB64(fs[0]); runFoodAi({ image, text: hint }); } catch (e) { toast('⚠️ ' + esc(e.message)); }
     });
   },

@@ -363,3 +363,13 @@ textarea { resize: none; }
 [data-theme="comic"] .mbar3 { background: #000; border: 2px solid var(--ink); border-radius: 2px; }
 [data-theme="comic"] .mbar3 > i { border-radius: 0; opacity: 1; }
 [data-theme="comic"] .mbar3 > i.red { background: var(--red); } [data-theme="comic"] .mbar3 > i.orange { background: var(--orange); } [data-theme="comic"] .mbar3 > i.violet { background: var(--pink); }
+
+/* выбор вида БЖУ (v3.18) */
+.mview { display: grid; gap: 8px; }
+.mview-opt { display: block; width: 100%; text-align: left; padding: 12px 14px; border-radius: 14px; background: var(--card); border: 1px solid var(--line); color: inherit; font: inherit; }
+.mview-opt.on { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.mview-opt .dim { font-size: 12px; margin-top: 6px; }
+.mview-opt .mbar, .mview-opt .mbar3 { margin-top: 8px; }
+.mv-check { color: var(--gold); font-weight: 800; }
+[data-theme="comic"] .mview-opt { border: 2px solid var(--ink); border-radius: 6px; }
+.qty-chips .chip.wide { grid-column: span 2; }

@@ -13,8 +13,9 @@ function dayPct(key) {
     kcal, prot: c(st.prot / t.protein), water: c(st.water / waterNeed(st)),
     sleep: sl ? clamp(Math.round((sleepH(sl) / 8) * 100), 0, 100) : 0,
     move: c(Math.max(st.mins / 30, st.steps / 8000)),
+    fiber: c(st.fiber / t.fiber),
   };
-  r.total = Math.round((r.kcal + r.prot + r.water + r.sleep + r.move) / 5);
+  r.total = Math.round((r.kcal + r.prot + r.water + r.sleep + r.move + r.fiber) / 6);
   return r;
 }
 // среднее за N дней (сегодня включительно), но не раньше начала пользования UpBek
@@ -24,9 +25,9 @@ function periodPct(n) {
   for (let i = 0; i < n; i++) { const k = dayKey(Date.now() - i * DAY); if (k >= start) days.push(dayPct(k)); }
   if (!days.length) days.push(dayPct(dayKey()));
   const avg = (f) => Math.round(sum(days, (x) => x[f]) / days.length);
-  return { total: avg('total'), kcal: avg('kcal'), prot: avg('prot'), water: avg('water'), sleep: avg('sleep'), move: avg('move'), days: days.length };
+  return { total: avg('total'), kcal: avg('kcal'), prot: avg('prot'), water: avg('water'), sleep: avg('sleep'), move: avg('move'), fiber: avg('fiber'), days: days.length };
 }
-const PCT_LABELS = [['kcal', '🍗', 'Калории'], ['prot', '🥩', 'Белок'], ['water', '💧', 'Вода'], ['sleep', '😴', 'Сон'], ['move', '🏃', 'Движение']];
+const PCT_LABELS = [['kcal', '🍗', 'Калории'], ['prot', '🥩', 'Белок'], ['water', '💧', 'Вода'], ['sleep', '😴', 'Сон'], ['move', '🏃', 'Движение'], ['fiber', '🌾', 'Клетчатка']];
 
 /* ---- сервер: один общий рейтинг для всех пользователей ---- */
 const GLOBAL_BOARD = 'GLOBAL';
@@ -77,7 +78,7 @@ function renderRating() {
   const mine = `<div class="card">
     <div class="row between"><b>Мой средний день · ${per} дн.</b><b class="gold num" style="font-size:22px">${my.total}%</b></div>
     ${PCT_LABELS.map(([k, ic, n]) => `<div class="mini" style="margin-top:8px"><div class="row"><span>${ic} ${n}</span><b class="num">${my[k]}%</b></div>${bar(my[k], 100, k === 'water' ? 'blue' : k === 'kcal' ? 'gold' : k === 'prot' ? 'red' : 'green')}</div>`).join('')}
-    <div class="dim" style="margin-top:8px">Процент дня — среднее по 5 показателям (каждый максимум 100%). Финансы не учитываются. Дней в расчёте: ${my.days}.</div>
+    <div class="dim" style="margin-top:8px">Процент дня — среднее по 6 показателям (каждый максимум 100%). Финансы не учитываются. Дней в расчёте: ${my.days}.</div>
   </div>`;
   const seg = `<div class="seg" style="margin-bottom:12px"><button class="${per === 7 ? 'on' : ''}" data-a="rPer" data-v="7">7 дней</button><button class="${per === 30 ? 'on' : ''}" data-a="rPer" data-v="30">30 дней</button></div>`;
   if (!boardOn()) return `${sheetHead('🏆 Рейтинг')}${seg}${mine}<div class="note">Общий рейтинг работает через облако (Настройки → Резервное копирование).</div>`;
