@@ -103,7 +103,8 @@ function targets(p = S.profile) {
   const fat = Math.round(p.weight * 1.0);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   const water = +p.waterOverride || Math.round((p.weight * 33) / 50) * 50;
-  return { bmr: Math.round(bmr), base: Math.round(base), kcal, protein, fat, carbs, water };
+  const fiber = clamp(Math.round((kcal / 1000) * 14), 20, 40); // ~14 г на 1000 ккал
+  return { bmr: Math.round(bmr), base: Math.round(base), kcal, protein, fat, carbs, fiber, water };
 }
 const foodKcal = (e) => e.k * e.qty;
 const glasses = (ml) => round1((ml || 0) / 250).toLocaleString('ru-RU');
@@ -120,6 +121,7 @@ function dayStats(d) {
     prot: sum(d.food, foodProt),
     fat: sum(d.food, (e) => (e.f || 0) * e.qty),
     carb: sum(d.food, (e) => (e.c || 0) * e.qty),
+    fiber: sum(d.food, (e) => (e.fb || 0) * e.qty),
     actK: sum(d.act, (a) => a.kcal),
     mins: sum(sport, (a) => a.min),
     steps: sum(d.act, (a) => a.steps),
@@ -474,8 +476,8 @@ function todayCard(d) {
   return `<div class="card today">
     <div class="ring">${ring(st.eaten, need)}<div class="c"><b class="num">${fmt(st.eaten)}</b><span>из ${fmt(need)} ккал</span></div></div>
     <div class="grow">
-      <div class="mini"><div class="row"><span>🥩 Белок</span><b class="num">${Math.round(st.prot)} / ${t.protein} г</b></div>${bar(st.prot, t.protein, 'red')}
-        <div class="macros"><span>Жиры <b class="num">${Math.round(st.fat)}</b>/${t.fat}</span><span>Углеводы <b class="num">${Math.round(st.carb)}</b>/${t.carbs}</span></div></div>
+      <div class="mini"><div class="row"><span>🥩 БЖУ, г</span><b class="num">${macroPct(st, t)}%</b></div>${macroBar(st, t)}<div class="mleg-row">${macroLegend(st, t)}</div></div>
+      <div class="mini"><div class="row"><span>🌾 Клетчатка</span><b class="num">${round1(st.fiber).toLocaleString('ru-RU')} / ${t.fiber} г</b></div>${bar(st.fiber, t.fiber, 'green')}</div>
       <div class="mini"><div class="row"><span>💧 Вода · ${glasses(st.water)} ст.</span><b class="num">${fmt(st.water)} / ${fmt(waterNeed(st))} мл</b></div>${bar(st.water, waterNeed(st), 'blue')}</div>
       <div class="mini"><div class="row"><span>🔥 Потрачено</span><b class="num">${fmt(spent)} ккал</b></div>${bar(st.actK, 600, 'blue')}<div class="dim" style="margin-top:3px">организм ${fmt(t.base)} + спорт ${fmt(st.actK)}</div></div>
       <div class="mini" style="margin:0"><div class="row"><span>⚖️ Баланс</span><b class="num ${balCls}">${balance > 0 ? '+' : ''}${fmt(balance)} ккал</b></div></div>
@@ -532,6 +534,16 @@ function promptCards() {
 }
 
 /* ---------- Герой ---------- */
+// БЖУ одной линией: три отрезка (белки · жиры · углеводы), каждый заполняется до своей нормы
+function macroBar(st, t) {
+  const seg = (v, n, cls) => `<span class="bar ${cls}"><i style="width:${clamp(n ? (v / n) * 100 : 0, 0, 100)}%"></i></span>`;
+  return `<div class="mbar">${seg(st.prot, t.protein, 'red')}${seg(st.fat, t.fat, 'orange')}${seg(st.carb, t.carbs, 'violet')}</div>`;
+}
+function macroLegend(st, t) {
+  return `<span class="mleg"><span><i class="md red"></i>Б <b class="num">${Math.round(st.prot)}</b>/${t.protein}</span><span><i class="md orange"></i>Ж <b class="num">${Math.round(st.fat)}</b>/${t.fat}</span><span><i class="md violet"></i>У <b class="num">${Math.round(st.carb)}</b>/${t.carbs}</span></span>`;
+}
+const macroPct = (st, t) => Math.round((clamp(st.prot / t.protein, 0, 1) + clamp(st.fat / t.fat, 0, 1) + clamp(st.carb / (t.carbs || 1), 0, 1)) / 3 * 100);
+const movePct = (st) => Math.round(clamp(Math.max(st.mins / 30, st.steps / 8000), 0, 1) * 100);
 function attr(ic, name, pct, cls, sub) {
   return `<div class="attr"><span class="ai">${ic}</span><div class="grow"><div class="row between"><b>${name}</b><span class="dim">${sub}</span></div><div class="bar ${cls}"><i style="width:${clamp(pct || 0, 0, 100)}%"></i></div></div><b class="ap num">${pct == null ? '—' : pct + '%'}</b></div>`;
 }
@@ -540,9 +552,8 @@ function renderHero() {
   const st = dayStats(g.today), t = targets();
   const need = t.kcal + Math.round(st.actK);
   const hp = need ? Math.round((st.eaten / need) * 100) : 0;
-  const weekAgo = Date.now() - 7 * DAY;
-  const weekMins = sum(S.act.filter((a) => a.t > weekAgo && !a.steps), (a) => a.min);
-  const form = Math.round((weekMins / 150) * 100);
+  const form = movePct(st);
+  const formSub = st.steps / 8000 > st.mins / 30 ? `${fmt(st.steps)} / 8 000 шагов` : `${Math.round(st.mins)} / 30 мин сегодня`;
   const sl = sleepOf(dayKey()); const sh = sl ? sleepH(sl) : null;
   const status = sh == null ? null : sh >= 7 ? ['⚡', 'Бодрость', 'buff'] : sh < 6 ? ['😴', 'Не выспался', 'debuff'] : ['🙂', 'Норм', ''];
   const q = questsOf(g.today);
@@ -564,10 +575,10 @@ function renderHero() {
     </div>
     <div class="attrs">
       ${attr('❤️', 'Сытость', hp, 'red', `${fmt(st.eaten)} / ${fmt(need)} ккал`).replace('<div class="attr">', '<div class="attr tap" data-a="tab" data-v="body">')}
-      ${attr('🥩', 'Белок', Math.round((st.prot / t.protein) * 100), '', `${Math.round(st.prot)} / ${t.protein} г`).replace('<div class="attr">', '<div class="attr tap" data-a="tab" data-v="body">')}
+      <div class="attr tap" data-a="tab" data-v="body"><span class="ai">🥩</span><div class="grow"><div class="row between"><b>БЖУ</b>${macroLegend(st, t)}</div>${macroBar(st, t)}</div><b class="ap num">${macroPct(st, t)}%</b></div>
       ${attr('⚡', 'Энергия', energyOf(sl), 'gold', sh == null ? 'запиши сон' : 'сон ' + fmtH(sh))}
       ${attr('💧', 'Вода', Math.round((st.water / waterNeed(st)) * 100), 'blue', `${glasses(st.water)} из ${glasses(waterNeed(st))} стаканов · нажми +`).replace('<div class="attr">', '<div class="attr tap" data-a="foodSheet" data-v="water">')}
-      ${attr('💪', 'Форма', form, 'green', `${weekMins} / 150 мин за 7 дней`)}
+      ${attr('💪', 'Форма', form, 'green', formSub)}
     </div>
     <div class="char-foot">
       ${mainAcc ? `<button class="pill" data-a="tab" data-v="money"><i class="dot" style="background:${mainAcc.color}"></i> ${esc(mainAcc.name)}: <b class="num">${fmt(g.bal[mainAcc.id])} сом</b></button>` : ''}
@@ -854,7 +865,7 @@ function updateFoodPreview() {
   $('#foodTiles').innerHTML = tilesHtml(last.length >= 2 ? last : '');
 }
 function foodEntry(f, qty) {
-  const e = { id: uid(), t: viewDayTime(), fid: f.id, name: f.n, ic: f.ic, unit: f.u, qty, k: f.k, p: f.p, f: f.f || 0, c: f.c || 0, ...(f.hyd ? { hyd: f.hyd } : {}) };
+  const e = { id: uid(), t: viewDayTime(), fid: f.id, name: f.n, ic: f.ic, unit: f.u, qty, k: f.k, p: f.p, f: f.f || 0, c: f.c || 0, ...(f.fb ? { fb: f.fb } : {}), ...(f.hyd ? { hyd: f.hyd } : {}) };
   if (UI.linkTx) e.tx = UI.linkTx;
   return e;
 }
@@ -1193,7 +1204,7 @@ function openEditFood(id) {
   openSheet(() => `${sheetHead(`${esc(e.ic || '🍽️')} ${esc(e.name)}`)}
   <div class="dim" style="text-align:center">${fmt(e.k)} ккал · Б ${dec(e.p)} · Ж ${dec(e.f || 0)} · У ${dec(e.c || 0)} — за ${amountText(e.unit, 1)}</div>
   <div class="stepper qty-step"><button data-a="fqty" data-v="-1" aria-label="Меньше">−</button><b class="num">${amountText(e.unit, e.qty)}</b><button data-a="fqty" data-v="1" aria-label="Больше">＋</button></div>
-  <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">Б ${Math.round(foodProt(e))} г · Ж ${Math.round((e.f || 0) * e.qty)} г · У ${Math.round((e.c || 0) * e.qty)} г</div></div>
+  <div class="total" style="margin-bottom:14px"><div class="tv num" style="font-size:28px">${fmt(foodKcal(e))} ккал</div><div class="tl">Б ${Math.round(foodProt(e))} г · Ж ${Math.round((e.f || 0) * e.qty)} г · У ${Math.round((e.c || 0) * e.qty)} г${e.fb ? ` · 🌾 ${dec((e.fb || 0) * e.qty)} г` : ''}</div></div>
   ${e.hyd ? `<div class="note" style="margin:-4px 0 12px">💧 В водный баланс: +${fmt(e.hyd * e.qty)} мл</div>` : ''}
   <div class="field"><label>📅 Дата — если записал не в тот день</label><input type="date" id="feDate" max="${dayKey()}" value="${dayKey(e.t)}"></div>
   <button class="btn" data-a="close">Готово</button>
@@ -1252,7 +1263,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.15</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.16</p>
   `;
 }
 function openAchSheet() {
@@ -1425,7 +1436,7 @@ const A = {
     if (tooFast()) return;
     const recent = S.food.find((x) => x.name === `${a.n} (примерно)` && Date.now() - x.t < 60 * 60000 && UI.foodDay === 0);
     if (recent && !(await ask(`🍽️ «${a.n}» уже записан в ${hhmm(recent.t)}.<br>Записать ещё один приём пищи?`, 'Да', 'Нет'))) return;
-    const e = { id: uid(), t: viewDayTime(), name: `${a.n} (примерно)`, ic: '🍽️', unit: 'приём пищи', qty: 1, k: a.k, p: a.p, f: a.f || 0, c: a.c || 0 };
+    const e = { id: uid(), t: viewDayTime(), name: `${a.n} (примерно)`, ic: '🍽️', unit: 'приём пищи', qty: 1, k: a.k, p: a.p, f: a.f || 0, c: a.c || 0, fb: a.fb || 0 };
     if (UI.linkTx) e.tx = UI.linkTx;
     act(() => S.food.push(e), `🍽️ ${a.n} · ~${a.k} ккал`, () => act(() => { S.food = S.food.filter((x) => x.id !== e.id); }, 'Отменено'));
   },

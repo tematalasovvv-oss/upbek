@@ -327,3 +327,24 @@ textarea { resize: none; }
 /* дуэль на главном (v3.14) */
 .duel-home { display: block; width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; }
 .duel-card .row .btn { flex: 1; }
+
+/* БЖУ одной линией (v3.16): три отрезка, каждый до своей нормы */
+.mbar { display: flex; gap: 4px; margin-top: 5px; }
+.mbar > .bar { flex: 1; height: 8px; margin: 0; }
+.bar.orange > i { background: linear-gradient(90deg, #e9862a, var(--orange, #ff9f43)); }
+.bar.violet > i { background: linear-gradient(90deg, var(--violet), #b49cff); }
+.mleg { display: inline-flex; gap: 8px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.mleg > span { display: inline-flex; align-items: center; gap: 3px; }
+.mleg b { color: var(--text); font-size: 11px; }
+.md { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+.md.red { background: var(--red); } .md.orange { background: var(--orange, #ff9f43); } .md.violet { background: var(--violet); }
+.mleg-row { margin-top: 5px; }
+.mleg-row .mleg { display: flex; justify-content: space-between; gap: 6px; }
+.spinner.sm { width: 14px; height: 14px; border-width: 2px; display: inline-block; vertical-align: -2px; margin-right: 6px; }
+[data-theme="comic"] .mbar > .bar { height: 10px; }
+[data-theme="comic"] .bar.orange > i { background-color: var(--orange); }
+[data-theme="comic"] .bar.violet > i { background-color: var(--pink); }
+[data-theme="soft"] .bar.orange > i { background: linear-gradient(90deg, #d9803f, #f0b27f); }
+[data-theme="soft"] .bar.violet > i { background: linear-gradient(90deg, #8f6fc2, #b9a0e0); }
+[data-theme="soft"] .bar.red > i { background: linear-gradient(90deg, #c73e5e, #e9819a); }
+@media (max-width: 360px) { .mleg { gap: 5px; font-size: 10px; } }

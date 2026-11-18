@@ -95,7 +95,7 @@ const FOOD_SCHEMA = {
         type: 'OBJECT',
         properties: {
           name: { type: 'STRING' }, emoji: { type: 'STRING' }, grams: { type: 'NUMBER' },
-          kcal: { type: 'NUMBER' }, protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' }, water_ml: { type: 'NUMBER' },
+          kcal: { type: 'NUMBER' }, protein: { type: 'NUMBER' }, fat: { type: 'NUMBER' }, carbs: { type: 'NUMBER' }, fiber: { type: 'NUMBER' }, water_ml: { type: 'NUMBER' },
         },
         required: ['name', 'grams', 'kcal', 'protein', 'fat', 'carbs'],
       },
@@ -107,7 +107,7 @@ const FOOD_SCHEMA = {
 function foodPrompt(hasImage, text) {
   const p = S.profile || {};
   return `Ты — нутрициолог. Пользователь живёт в Кыргызстане (частые блюда: плов, лагман, манты, самса, шорпо, бешбармак, куурдак, ашлямфу, лепёшка, боорсок, блюда столовых).
-Определи каждое отдельное блюдо или продукт${hasImage ? ' на фото' : ''}, оцени вес порции в граммах и посчитай для ЭТОЙ порции калории (kcal), белки (protein), жиры (fat) и углеводы (carbs) в граммах.
+Определи каждое отдельное блюдо или продукт${hasImage ? ' на фото' : ''}, оцени вес порции в граммах и посчитай для ЭТОЙ порции калории (kcal), белки (protein), жиры (fat), углеводы (carbs) и клетчатку (fiber) в граммах.
 Правила: названия короткие, по-русски; emoji — один подходящий эмодзи; числа — реалистичные средние значения для такой порции; каждое блюдо и напиток — отдельной строкой. Если на фото несколько одинаковых порций, перечисли их отдельно.
 water_ml — сколько воды организм получит из этой порции: чистая вода, чай, компот, молоко ≈ 90–100% объёма, кофе ≈ 85%, сладкие напитки ≈ 90%, супы ≈ 50% объёма; алкоголь, энергетики и твёрдая еда — 0.
 Если еды нет — верни пустой items и объясни в comment. В comment одной короткой фразой можно дать совет (цель пользователя: ${GOALS[p.goal] ? GOALS[p.goal].n.toLowerCase() : 'здоровое питание'}).${text ? `\nОписание от пользователя: «${text}»` : ''}`;
@@ -164,10 +164,12 @@ function renderAiResult() {
   ${UI.linkTx ? '<div class="hint">Отметь только своё — остальное сними галочкой</div>' : ''}
   <div class="card list">${R.items.map((x, i) => `<div class="item aiitem ${x.on ? '' : 'off'}">
     <button class="ii" data-a="aiToggle" data-v="${i}">${x.on ? esc(x.emoji || '🍽️') : '✕'}</button>
-    <span class="grow"><div class="it">${esc(x.name)}</div><div class="is">~${Math.round(x.grams * x.mult)} г · Б ${Math.round(x.protein * x.mult)} · Ж ${Math.round(x.fat * x.mult)} · У ${Math.round(x.carbs * x.mult)}${x.water_ml > 0 ? ` · 💧 ${Math.round(x.water_ml * x.mult)} мл` : ''}</div></span>
+    <span class="grow"><div class="it">${esc(x.name)}</div><div class="is">~${Math.round(x.grams * x.mult)} г · Б ${Math.round(x.protein * x.mult)} · Ж ${Math.round(x.fat * x.mult)} · У ${Math.round(x.carbs * x.mult)}${x.fiber > 0 ? ` · 🌾 ${dec(x.fiber * x.mult)}` : ''}${x.water_ml > 0 ? ` · 💧 ${Math.round(x.water_ml * x.mult)} мл` : ''}</div></span>
     <span class="mini-step"><button data-a="aiMult" data-v="${i}:-0.5">−</button><b>${x.mult === 1 ? '1' : round1(x.mult)}</b><button data-a="aiMult" data-v="${i}:0.5">＋</button></span>
     <b class="iv">${fmt(x.kcal * x.mult)}</b></div>`).join('')}</div>
-  <div class="total" style="margin:6px 0 12px"><div class="tv num">${fmt(tot('kcal'))} ккал</div><div class="tl">Б ${Math.round(tot('protein'))} г · Ж ${Math.round(tot('fat'))} г · У ${Math.round(tot('carbs'))} г</div></div>
+  <div class="total" style="margin:6px 0 12px"><div class="tv num">${fmt(tot('kcal'))} ккал</div><div class="tl">Б ${Math.round(tot('protein'))} г · Ж ${Math.round(tot('fat'))} г · У ${Math.round(tot('carbs'))} г${tot('fiber') > 0 ? ` · 🌾 ${dec(tot("fiber"))} г` : ''}${tot('water_ml') > 0 ? ` · 💧 ${fmt(tot('water_ml'))} мл` : ''}</div></div>
+  ${R.adding ? '<div class="note" style="margin-bottom:12px"><span class="spinner sm"></span> Считаю добавленное блюдо…</div>' : ''}
+  <button class="btn ghost" style="margin-bottom:12px" data-a="aiAdd" ${R.adding ? 'disabled' : ''}>＋ Добавить блюдо</button>
   ${R.comment ? `<div class="note" style="margin-bottom:12px">💡 ${esc(R.comment)}</div>` : ''}
   <button class="btn gold" data-a="aiSave" ${on.length ? '' : 'disabled'}>Записать${on.length ? ` (${on.length})` : ''}</button>
   <div class="hint" style="margin-top:8px">Цифры — оценка ИИ. ＋/− меняют порцию.</div>`;
@@ -239,6 +241,31 @@ Object.assign(A, {
     if (text.length < 2) { toast('Напиши в поле, что съел, — например «тарелка лагмана и чай»'); const i = $('#foodText'); if (i) i.focus(); return; }
     runFoodAi({ text });
   },
+  // ＋ Добавить блюдо к готовому расчёту: сначала ищем в меню UpBek, незнакомое досчитывает ИИ
+  aiAdd: async () => {
+    const R = UI.aiRes; if (!R || R.adding) return;
+    const top = allFoods().filter((f) => !f.water && S.usage[f.id]).sort((a, b) => S.usage[b.id] - S.usage[a.id]).slice(0, 6).map((f) => shortName(f.n));
+    const text = await askText('＋ <b>Что ещё было?</b><br><span class="dim">Например: «хлеб 2 куска, чай с сахаром». Блюда из меню посчитаю сразу, остальное — ИИ.</span>', 'Название и количество', top, { no: 'Отмена', yes: 'Добавить', cancel: true, max: 120 });
+    if (!text) return;
+    const parts = parseFood(text), unknown = [];
+    for (const x of parts) {
+      if (x.f && !x.f.water) R.items.push({ name: shortName(x.f.n), emoji: x.f.ic, grams: (x.f.g || 0) * x.qty, kcal: x.f.k * x.qty, protein: x.f.p * x.qty, fat: (x.f.f || 0) * x.qty, carbs: (x.f.c || 0) * x.qty, fiber: (x.f.fb || 0) * x.qty, water_ml: (x.f.hyd || 0) * x.qty, on: true, mult: 1, local: true });
+      else if (x.f && x.f.water) R.items.push({ name: 'Вода', emoji: '💧', grams: x.f.water * x.qty, kcal: 0, protein: 0, fat: 0, carbs: 0, fiber: 0, water_ml: x.f.water * x.qty, on: true, mult: 1, local: true });
+      else if (x.custom) R.items.push({ name: x.name, emoji: '🍽️', grams: 0, kcal: x.k, protein: 0, fat: 0, carbs: 0, fiber: 0, on: true, mult: 1, local: true });
+      else if (x.bad) unknown.push(x.bad);
+    }
+    refreshSheet();
+    if (!unknown.length) { toast('＋ Добавлено к расчёту'); return; }
+    if (!aiReady()) { toast('Не нашёл в меню: ' + esc(unknown.join(', '))); return; }
+    R.adding = true; refreshSheet();
+    try {
+      const r = await aiFood({ text: unknown.join(', ') });
+      (r.items || []).forEach((x) => R.items.push({ ...x, on: true, mult: 1 }));
+      toast((r.items || []).length ? '✨ Добавлено к расчёту' : 'ИИ не узнал блюдо — опиши иначе');
+    } catch (e) { toast('⚠️ ' + esc(aiErr(e.message))); }
+    R.adding = false;
+    if (UI.aiRes === R && UI.sheetFn === renderAiResult) refreshSheet();
+  },
   aiToggle: (el) => { const x = UI.aiRes.items[+el.dataset.v]; x.on = !x.on; refreshSheet(); },
   aiMult: (el) => { const [i, d] = el.dataset.v.split(':'); const x = UI.aiRes.items[+i]; x.mult = clamp(round1(x.mult + +d), 0.5, 10); refreshSheet(); },
   aiSave: () => {
@@ -247,7 +274,7 @@ Object.assign(A, {
     const t = viewDayTime();
     const entries = R.items.filter((x) => x.on).map((x) => ({
       id: uid(), t, name: String(x.name || '').slice(0, 60), ic: safeIc(x.emoji), unit: `~${Math.round(x.grams)} г`, qty: x.mult,
-      k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ...(x.water_ml > 0 ? { hyd: Math.round(x.water_ml) } : {}), ai: true, ...(ctx.link ? { tx: ctx.link } : {}),
+      k: Math.round(x.kcal), p: round1(x.protein), f: round1(x.fat), c: round1(x.carbs), ...(x.fiber > 0 ? { fb: round1(x.fiber) } : {}), ...(x.water_ml > 0 ? { hyd: Math.round(x.water_ml) } : {}), ...(x.local ? {} : { ai: true }), ...(ctx.link ? { tx: ctx.link } : {}),
     }));
     const ids = entries.map((e) => e.id);
     closeSheet();

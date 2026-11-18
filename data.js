@@ -84,6 +84,7 @@ const FOODS = [
   { id: 'apple', n: 'Яблоко', ic: '🍎', u: 'шт', g: 180, k: 90, p: 0.5, f: 0.3, c: 23, a: ['яблок', 'груш', 'апельсин', 'мандарин', 'фрукт'] },
   { id: 'nuts', n: 'Орехи', ic: '🥜', u: 'горсть', g: 30, k: 180, p: 5, f: 16, c: 6, a: ['орех', 'миндал', 'фисташ', 'кешью', 'семечк'] },
   { id: 'pb', n: 'Арахисовая паста', ic: '🥜', u: 'ст. ложка', g: 16, k: 95, p: 4, f: 8, c: 3, a: ['арахисов'] },
+  { id: 'cheesecake', n: 'Чизкейк', ic: '🍰', u: 'кусок', g: 110, k: 350, p: 6, f: 23, c: 30, a: ['чизкейк', 'чиз кейк', 'cheesecake'] },
   { id: 'choco', n: 'Шоколад', ic: '🍫', u: '½ плитки', g: 45, k: 240, p: 3, f: 14, c: 26, a: ['шоколад', 'сникерс', 'батончик'] },
   { id: 'sweets', n: 'Сладкое', ic: '🍪', u: '2 шт', g: 40, k: 180, p: 2, f: 8, c: 25, a: ['печень', 'конфет', 'сладк', 'торт', 'пирожн', 'вафл', 'халв'] },
 
@@ -124,11 +125,15 @@ const FOODS = [
 ];
 
 // «Не хочу считать» — примерная оценка приёма пищи
+// клетчатка (г) на одну единицу блюда — средние значения; чего нет в списке — 0
+const FIBER = { plov: 3, lagman: 4, manty: 0.5, samsa: 1, shorpo: 2, besh: 2, ashlyam: 2, kuurdak: 2, gulyash: 3, pelmeni: 2, shashlyk: 0.5, oromo: 2, kesme: 2, lepeshka: 3, bread: 1, boorsok: 0.5, borsch: 4, soup: 2, pirozhok: 1, cutlet: 0.5, rice: 0.6, buckwheat: 4, pasta: 2.5, potato: 3, fries: 4, oat: 4, teos_fruit: 0.5, protein: 1, gainer: 2, banana: 3, apple: 4, nuts: 2.5, pb: 1, choco: 3, sweets: 0.3, kompot: 0.5, salad: 4, shaurma: 3, burger: 2, pizza: 2, cutlet_mash: 3, brizol: 1, kfc_twister: 2, kfc_basket: 2, kfc_burger: 2, olivie: 3, caesar: 2.5, kasha_buck: 4, kasha_rice: 0.8, salami_sand: 2, chicken_sand: 3, kurnik: 2, bliny: 0.5, bliny_meat: 0.7, pasta_chicken: 3, rolls: 2, rolls_phila: 2, rolls_cali: 2.5, rolls_baked: 2, sushi: 0.2, sandwich: 1.5, cheesecake: 0.5 };
+FOODS.forEach((f) => { if (f.fb == null) f.fb = FIBER[f.id] || 0; });
+
 const APPROX = [
-  { id: 'snack', n: 'Перекус', k: 300, p: 10, f: 12, c: 38 },
-  { id: 'normal', n: 'Обычно', k: 600, p: 25, f: 24, c: 70 },
-  { id: 'big', n: 'Плотно', k: 900, p: 35, f: 38, c: 100 },
-  { id: 'feast', n: 'Пир', k: 1300, p: 45, f: 60, c: 140 },
+  { id: 'snack', n: 'Перекус', k: 300, p: 10, f: 12, c: 38, fb: 2 },
+  { id: 'normal', n: 'Обычно', k: 600, p: 25, f: 24, c: 70, fb: 5 },
+  { id: 'big', n: 'Плотно', k: 900, p: 35, f: 38, c: 100, fb: 7 },
+  { id: 'feast', n: 'Пир', k: 1300, p: 45, f: 60, c: 140, fb: 9 },
 ];
 
 const ACTS = [
