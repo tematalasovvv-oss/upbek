@@ -420,3 +420,17 @@ textarea { resize: none; }
 .aiitem > .mini-step { grid-area: ctl; justify-self: start; }
 .aiitem > .iv { grid-area: kc; align-self: start; padding-top: 2px; }
 .aiitem > .fav-btn { grid-area: fav; justify-self: end; margin: 0; }
+
+/* разбор недели: таблица «Неделя в цифрах» (v3.23) */
+.ctab-wrap { padding: 10px 8px; overflow-x: auto; }
+.ctab { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ctab th, .ctab td { padding: 6px 3px; text-align: center; white-space: nowrap; }
+.ctab thead th { color: var(--muted); font-weight: 600; font-size: 11px; border-bottom: 1px solid var(--line); }
+.ctab tbody th { color: var(--muted); font-weight: 700; text-align: left; padding-left: 4px; }
+.ctab tbody tr + tr td, .ctab tbody tr + tr th { border-top: 1px solid var(--line); }
+.ctab td.ok { color: var(--green); font-weight: 700; }
+.ctab td.bad { color: var(--orange, #ff9f43); font-weight: 700; }
+.ctab td.na { color: var(--dim, var(--muted)); }
+.ctab-legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--muted); padding-left: 4px; }
+.ctab-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.ctab-legend i.ok { background: var(--green); } .ctab-legend i.bad { background: var(--orange, #ff9f43); }

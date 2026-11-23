@@ -195,7 +195,7 @@ function openAiSetup() {
   </div>
   <input id="aiKey" placeholder="AIza…" autocomplete="off" autocapitalize="off" spellcheck="false" value="">
   <button class="btn gold" style="margin-top:10px" data-a="aiConnect">Подключить</button>
-  ${c.key ? `<h3 style="font-size:15px;margin:16px 0 6px">Модель</h3>
+  ${c.key ? `<h3 class="vh">Модель</h3>
   <div class="card list">${(c.all && c.all.length ? c.all : [c.model]).map((m) => `<button class="item" data-a="aiModel" data-v="${esc(m)}"><span class="ii">${m === c.model ? '✅' : (/lite/.test(m) ? '⚡' : '⭐')}</span><span class="grow"><div class="it">${esc(m)}</div><div class="is">${/lite/.test(m) ? 'самая быстрая, чуть менее точная' : 'точная, рекомендуемая'}</div></span></button>`).join('')}</div>
   <div class="note">Если ИИ отвечает медленно — выбери ⚡ «lite». Модели Pro умнее, но заметно медленнее и с маленьким бесплатным лимитом, поэтому их здесь нет.</div>
   <button class="btn danger" style="margin-top:8px" data-a="aiOff">Отключить ИИ</button>` : ''}
@@ -500,13 +500,23 @@ const COACH_SCHEMA = {
   type: 'OBJECT',
   properties: {
     score: { type: 'NUMBER' }, title: { type: 'STRING' }, summary: { type: 'STRING' },
-    alerts: { type: 'ARRAY', items: { type: 'STRING' } },
-    food: { type: 'ARRAY', items: { type: 'STRING' } }, money: { type: 'ARRAY', items: { type: 'STRING' } }, body: { type: 'ARRAY', items: { type: 'STRING' } },
+    alerts: { type: 'ARRAY', items: { type: 'STRING' }, minItems: 1, maxItems: 6 },
+    food: { type: 'ARRAY', items: { type: 'STRING' }, minItems: 4, maxItems: 7 }, money: { type: 'ARRAY', items: { type: 'STRING' }, minItems: 4, maxItems: 7 }, body: { type: 'ARRAY', items: { type: 'STRING' }, minItems: 2, maxItems: 5 },
     goals: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, why: { type: 'STRING' } }, required: ['title'] } },
     adjust: { type: 'ARRAY', items: { type: 'OBJECT', properties: { param: { type: 'STRING', enum: ['kcal', 'protein', 'water'] }, value: { type: 'NUMBER' }, why: { type: 'STRING' } }, required: ['param', 'value', 'why'] } },
   },
-  required: ['score', 'summary', 'food', 'money', 'body', 'goals'],
+  required: ['score', 'summary', 'alerts', 'food', 'money', 'body', 'goals'],
 };
+// предложения норм: убираем «2300 → 2300», мелочь и нереальные значения
+function cleanAdjust(list) {
+  const t = targets();
+  const cur = { kcal: t.kcal, protein: t.protein, water: t.water };
+  const lim = { kcal: [1200, 5000, 100], protein: [40, 300, 10], water: [1000, 5000, 200] }; // мин, макс, минимальный шаг
+  return (list || []).map((a) => ({ ...a, value: Math.round(+a.value) })).filter((a) => {
+    const L = lim[a.param]; if (!L || !Number.isFinite(a.value)) return false;
+    return a.value >= L[0] && a.value <= L[1] && Math.abs(a.value - cur[a.param]) >= L[2];
+  }).map((a) => ({ ...a, from: cur[a.param] }));
+}
 async function coachRun(force) {
   if (!aiReady() || UI.coachBusy || !S.profile) return;
   const w = lastWeek();
@@ -521,17 +531,18 @@ async function coachRun(force) {
 Дай:
 - score: оценка недели 1–10;
 - title: заголовок недели в 3–5 слов (в игровом стиле);
-- summary: 2–3 предложения — главное за неделю;
+- summary: 2–3 предложения — главное за неделю, с цифрами;
+ВАЖНО: каждый пункт — 1–2 предложения и обязательно с конкретной цифрой из данных (ккал, граммы, литры, часы, сомы, дни из 7). Без общих фраз вроде «питайся правильно».
 - alerts: 1–5 коротких предупреждений по фактам из facts — ОБЯЗАТЕЛЬНО упомяни: каждую норму из never_reached («за неделю ни разу не добрал воду» и т.п.); каждый день из oversleep_days_over_10h (пересып тоже вреден: вялость, пропущенные дела, сбитый режим — скажи прямо); дни недосыпа; дни переедания из days_overeating_over_115pct с цифрами; ночные пробуждения, если их много. Если всё хорошо — 1 позитивный пункт;
 - food: 3–6 конкретных советов по питанию с цифрами: средние калории/белок/жиры/углеводы/клетчатка против нормы, в какие дни был перебор или недобор, сколько записано приёмов пищи, чем добрать белок и клетчатку из доступных в Кыргызстане продуктов;
 - money: 3–6 пунктов по казне с цифрами в сомах: доходы и расходы за неделю, процент сбережений (savings_rate_pct), топ-категории и самые крупные траты, в какой день потрачено больше всего, сравнение с прошлой неделей, долги людей и кредиты, где реально сэкономить и сколько;
 - body: 2–4 совета про сон (длительность, пересып, пробуждения), шаги и тренировки; учитывай work (умственная нагрузка и стресс: при высоком стрессе — режим сна, перекусы без сахара, прогулки);
 - goals: ровно 3 цели на эту неделю — измеримые и достижимые (например «5 дней из 7 добрать 100 г белка»);
-- adjust: 0–3 предложения поменять дневные нормы (param: kcal — калории, protein — белок в граммах, water — вода в мл; value — новое значение в день; why — коротко почему). Предлагай, только если данные это подтверждают: например, вес не растёт при наборе массы — поднять kcal на 150–250; воды стабильно мало — скорректировать норму. Текущие нормы — в targets.
+- adjust: 0–3 предложения поменять дневные нормы (param: kcal — калории, protein — белок в граммах, water — вода в мл; value — НОВОЕ значение в день, оно ДОЛЖНО отличаться от текущего в targets минимум на 100 ккал / 10 г / 200 мл, иначе не предлагай; why — коротко почему). Предлагай, только если данные это подтверждают: например, вес не растёт при наборе массы — поднять kcal на 150–250; воды стабильно мало — скорректировать норму. Текущие нормы — в targets.
 Без медицинских диагнозов. Если данных мало — начни с совета чаще записывать.
 Данные: ${JSON.stringify(data)}`;
     const r = await aiCall([{ text: prompt }], COACH_SCHEMA);
-    S.coach = [...(S.coach || []).filter((c) => c.week !== w.key), { week: w.key, at: Date.now(), ...r, goals: (r.goals || []).slice(0, 3).map((g) => ({ ...g, done: false })) }].slice(-12);
+    S.coach = [...(S.coach || []).filter((c) => c.week !== w.key), { week: w.key, at: Date.now(), v: APP_VER, ...r, adjust: cleanAdjust(r.adjust), goals: (r.goals || []).slice(0, 3).map((g) => ({ ...g, done: false })) }].slice(-12);
     save(); UI.coachBusy = false; if (!UI.sheetFn) render();
     toast('🧠 Разбор недели готов');
   } catch (e) {
@@ -551,6 +562,21 @@ function coachCard() {
     <div class="dim" style="margin-top:8px;text-align:left">🎯 Цели недели: ${done} / ${c.goals.length} · +30 XP за каждую</div>
   </button>`;
 }
+// «Неделя в цифрах» — считается на телефоне, без ИИ: видно всё, даже если ИИ ответил кратко
+function coachTable(weekKey) {
+  const from = new Date(weekKey + 'T00:00:00').getTime(); if (!from) return '';
+  const d = weekData({ from, to: from + 7 * DAY, key: weekKey }), t = targets();
+  const days = d.days, has = (x) => x.meals_logged || x.sleep_h != null || x.water_ml || x.spent;
+  if (!days.some(has)) return '';
+  const cell = (v, ok, bad) => `<td class="${ok ? 'ok' : bad ? 'bad' : ''}">${v}</td>`;
+  const rows = days.map((x) => `<tr><th>${x.day}</th>${x.meals_logged ? cell(fmt(x.kcal), x.kcal >= x.kcal_need * 0.9 && x.kcal <= x.kcal_need * 1.1, x.kcal > x.kcal_need * 1.15) + cell(x.protein, x.protein >= t.protein) + cell(dec(x.fiber), x.fiber >= t.fiber) : '<td class="na" colspan="3">—</td>'}${cell(x.water_ml ? dec(x.water_ml / 1000) : '—', x.water_ml >= x.water_need)}${cell(x.sleep_h != null ? dec(x.sleep_h) : '—', x.sleep_h >= 7 && x.sleep_h <= 9.5, x.sleep_h != null && (x.sleep_h > 10 || x.sleep_h < 6))}${cell(x.spent ? fmt(x.spent) : '—')}</tr>`).join('');
+  const f = d.facts, m = d.money;
+  return `<h3 class="vh">📊 Неделя в цифрах</h3>
+  <div class="card ctab-wrap"><table class="ctab"><thead><tr><th></th><th>ккал</th><th>белок</th><th>🌾</th><th>вода, л</th><th>сон, ч</th><th>траты</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="ctab-legend"><span><i class="ok"></i>в норме</span><span><i class="bad"></i>перебор / пересып</span></div>
+  <div class="split" style="margin-top:10px"><div><span>Доходы</span><b class="num green">+${fmt(m.income)}</b></div><div><span>Расходы</span><b class="num red">−${fmt(m.spent)}</b></div></div>
+  <div class="dim" style="margin-top:8px">Нормы: ${fmt(t.kcal)} ккал · белок ${t.protein} г · клетчатка ${t.fiber} г · вода ${dec(t.water / 1000)} л · сон 7–9 ч${m.savings_rate_pct != null ? ` · отложено ${m.savings_rate_pct}% дохода` : ''}${f.days_with_food_logged ? ` · еда записана ${f.days_with_food_logged} дн. из 7` : ''}</div></div>`;
+}
 function openCoach(idx) {
   if (idx == null || !S.coach || !S.coach[idx]) idx = (S.coach || []).length - 1;
   UI.coachIdx = idx;
@@ -561,15 +587,16 @@ function openCoach(idx) {
     <button class="btn gold" data-a="coachNow">Разобрать прошлую неделю</button>`);
     return;
   }
-  const sec = (ic, t, arr) => (arr && arr.length ? `<h3 style="font-size:15px;margin:16px 0 6px">${ic} ${t}</h3><ul class="coach-list">${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
+  const sec = (ic, t, arr) => (arr && arr.length ? `<h3 class="vh">${ic} ${t}</h3><ul class="coach-list">${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
   openSheet(() => `${sheetHead('🧠 ' + esc(c.title || 'Разбор недели'))}
     <div class="row"><span class="coach-score">${Math.round(c.score)}<small>/10</small></span><div class="grow">${esc(c.summary)}</div></div>
     ${(c.alerts || []).length ? `<div class="coach-alerts"><b>⚠️ Обрати внимание</b><ul class="coach-list">${c.alerts.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+    ${coachTable(c.week)}
     ${sec('🍗', 'Питание', c.food)}${sec('💰', 'Казна', c.money)}${sec('😴', 'Сон и спорт', c.body)}
-    ${(c.adjust || []).length ? `<h3 style="font-size:15px;margin:16px 0 6px">📈 Предлагаю поменять нормы</h3><div class="card list">${c.adjust.map((a, i) => { const lab = { kcal: ['🍗', 'Калории', 'ккал', targets().kcal], protein: ['🥩', 'Белок', 'г', targets().protein], water: ['💧', 'Вода', 'мл', targets().water] }[a.param] || ['⚙️', a.param, '', 0]; const applied = Math.round(lab[3]) === Math.round(a.value); return `<div class="item"><span class="ii">${lab[0]}</span><span class="grow"><div class="it">${lab[1]}: ${fmt(lab[3])} → <b class="gold">${fmt(a.value)} ${lab[2]}</b></div><div class="is" style="white-space:normal">${esc(a.why)}</div></span>${applied ? '<span class="green">✓</span>' : `<button class="btn gold sm" data-a="coachApply" data-v="${i}">Применить</button>`}</div>`; }).join('')}</div>` : ''}
-    <h3 style="font-size:15px;margin:16px 0 6px">🎯 Цели на неделю <small class="dim">+30 XP за каждую</small></h3>
+    ${cleanAdjust(c.adjust).length ? `<h3 class="vh">📈 Предлагаю поменять нормы</h3><div class="card list">${cleanAdjust(c.adjust).map((a, i) => { const lab = { kcal: ['🍗', 'Калории', 'ккал', targets().kcal], protein: ['🥩', 'Белок', 'г', targets().protein], water: ['💧', 'Вода', 'мл', targets().water] }[a.param] || ['⚙️', a.param, '', 0]; const applied = false; return `<div class="item"><span class="ii">${lab[0]}</span><span class="grow"><div class="it">${lab[1]}: ${fmt(lab[3])} → <b class="gold">${fmt(a.value)} ${lab[2]}</b></div><div class="is" style="white-space:normal">${esc(a.why)}</div></span>${applied ? '<span class="green">✓</span>' : `<button class="btn gold sm" data-a="coachApply" data-v="${i}">Применить</button>`}</div>`; }).join('')}</div>` : ''}
+    <h3 class="vh">🎯 Цели на неделю <small class="dim">+30 XP за каждую</small></h3>
     <div class="card list">${c.goals.map((g, i) => `<button class="item" data-a="coachGoal" data-v="${i}"><span class="ii">${g.done ? '✅' : '⬜'}</span><span class="grow"><div class="it" style="white-space:normal">${esc(g.title)}</div>${g.why ? `<div class="is" style="white-space:normal">${esc(g.why)}</div>` : ''}</span></button>`).join('')}</div>
-    <div class="dim" style="margin-top:10px">Разбор от ${new Date(c.at).toLocaleDateString('ru-RU')} · советы ИИ, не медицинские рекомендации</div>
+    <div class="dim" style="margin-top:10px">Разбор от ${new Date(c.at).toLocaleDateString('ru-RU')} · UpBek v${esc(c.v || 'старая версия')} · советы ИИ, не медицинские рекомендации</div>
     <button class="btn ghost" style="margin-top:10px" data-a="coachNow">🔄 Разобрать заново</button>`);
 }
 
@@ -593,7 +620,7 @@ Object.assign(A, {
   coachOpen: (el) => openCoach(el && el.dataset && el.dataset.v != null ? +el.dataset.v : null),
   aiSheet: openAiSheet,
   coachApply: (el) => {
-    const c = S.coach[UI.coachIdx] || lastCoach(); const a = c && (c.adjust || [])[+el.dataset.v]; if (!a) return;
+    const c = S.coach[UI.coachIdx] || lastCoach(); const a = c && cleanAdjust(c.adjust)[+el.dataset.v]; if (!a) return;
     const key = { kcal: 'kcalOverride', protein: 'proteinOverride', water: 'waterOverride' }[a.param]; if (!key) return;
     const v = Math.round(+a.value); if (!(v > 0)) return;
     act(() => { S.profile[key] = v; }, `📈 Новая норма: ${fmt(v)} ${a.param === 'kcal' ? 'ккал' : a.param === 'protein' ? 'г белка' : 'мл воды'}`);

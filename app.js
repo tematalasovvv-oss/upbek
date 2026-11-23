@@ -52,6 +52,7 @@ function wholeWord(s, w) {
 }
 
 /* ---------- данные ---------- */
+const APP_VER = '3.23';
 function fresh() {
   return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], loans: [], cycle: null, pair: null, pairDone: {}, prefs: { askQty: false }, bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
 }
@@ -1304,7 +1305,7 @@ function renderMe() {
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.22</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v${APP_VER}</p>
   `;
 }
 function openAchSheet() {
