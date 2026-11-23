@@ -172,7 +172,9 @@ function renderAiResult() {
     <button class="ii" data-a="aiToggle" data-v="${i}">${x.on ? esc(x.emoji || '🍽️') : '✕'}</button>
     <span class="grow"><div class="it">${esc(x.name)}</div><div class="is">~${Math.round(x.grams * x.mult)} г · Б ${Math.round(x.protein * x.mult)} · Ж ${Math.round(x.fat * x.mult)} · У ${Math.round(x.carbs * x.mult)}${x.fiber > 0 ? ` · 🌾 ${dec(x.fiber * x.mult)}` : ''}${x.water_ml > 0 ? ` · 💧 ${Math.round(x.water_ml * x.mult)} мл` : ''}</div></span>
     <span class="mini-step"><button data-a="aiMult" data-v="${i}:-0.5">−</button><b>${x.mult === 1 ? '1' : round1(x.mult)}</b><button data-a="aiMult" data-v="${i}:0.5">＋</button></span>
-    <b class="iv">${fmt(x.kcal * x.mult)}</b></div>`).join('')}</div>
+    <b class="iv">${fmt(x.kcal * x.mult)}</b>
+    <button class="fav-btn${x.fav ? ' on' : ''}" data-a="aiFav" data-v="${i}" aria-label="${x.fav ? 'Уже в моих блюдах' : 'Сохранить в мои блюда'}" aria-pressed="${!!x.fav}">${x.fav ? '★' : '☆'}</button></div>`).join('')}</div>
+  <div class="hint" style="margin:-4px 0 10px">☆ — сохранить блюдо в «Мои блюда», чтобы потом добавлять в 1 касание</div>
   <div class="total" style="margin:6px 0 12px"><div class="tv num">${fmt(tot('kcal'))} ккал</div><div class="tl">Б ${Math.round(tot('protein'))} г · Ж ${Math.round(tot('fat'))} г · У ${Math.round(tot('carbs'))} г${tot('fiber') > 0 ? ` · 🌾 ${dec(tot("fiber"))} г` : ''}${tot('water_ml') > 0 ? ` · 💧 ${fmt(tot('water_ml'))} мл` : ''}</div></div>
   ${R.adding ? '<div class="note" style="margin-bottom:12px"><span class="spinner sm"></span> Считаю добавленное блюдо…</div>' : ''}
   <button class="btn ghost" style="margin-bottom:12px" data-a="aiAdd" ${R.adding ? 'disabled' : ''}>＋ Добавить блюдо</button>
@@ -282,6 +284,15 @@ Object.assign(A, {
     } catch (e) { toast('⚠️ ' + esc(aiErr(e.message))); }
     R.adding = false;
     if (UI.aiRes === R && UI.sheetFn === renderAiResult) refreshSheet();
+  },
+  aiFav: (el) => {
+    const x = UI.aiRes && UI.aiRes.items[+el.dataset.v]; if (!x) return;
+    if (x.fav) { toast('⭐ Уже в «Моих блюдах»'); return; }
+    const n = String(x.name || 'Блюдо').slice(0, 50), m = x.mult || 1, g = Math.round((x.grams || 0) * m);
+    const words = norm(n).split(/\s+/).filter((w) => w.length >= 3);
+    const f = { id: 'c_' + uid(), n, ic: safeIc(x.emoji), u: g ? `порция ${g} г` : 'порция', g, k: Math.round(x.kcal * m), p: round1(x.protein * m), f: round1(x.fat * m), c: round1(x.carbs * m), fb: round1((x.fiber || 0) * m), ...(x.water_ml > 0 ? { hyd: Math.round(x.water_ml * m) } : {}), a: [norm(n), ...words] };
+    S.customFoods.push(f); x.fav = true; save(); refreshSheet();
+    toast(`⭐ «${esc(n)}» — в моих блюдах`);
   },
   aiToggle: (el) => { const x = UI.aiRes.items[+el.dataset.v]; x.on = !x.on; refreshSheet(); },
   aiMult: (el) => { const [i, d] = el.dataset.v.split(':'); const x = UI.aiRes.items[+i]; x.mult = clamp(round1(x.mult + +d), 0.5, 10); refreshSheet(); },
@@ -419,8 +430,10 @@ function weekData(w) {
   for (let i = 0; i < 7; i++) {
     const k = dayKey(w.from + i * DAY + 12 * 36e5), d = b[k] || emptyDay(), st = dayStats(d), sl = sleepOf(k);
     days.push({
-      day: ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'][i], kcal: Math.round(st.eaten), protein: Math.round(st.prot), fat: Math.round(st.fat), carbs: Math.round(st.carb),
-      meals_logged: d.food.length, sleep_h: sl ? round1(sleepH(sl)) : null, sport_min: st.mins, steps: st.steps,
+      day: ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'][i], kcal: Math.round(st.eaten), kcal_need: t.kcal + Math.round(st.actK), protein: Math.round(st.prot), fat: Math.round(st.fat), carbs: Math.round(st.carb),
+      fiber: round1(st.fiber), water_ml: Math.round(st.water), water_need: waterNeed(st),
+      meals_logged: d.food.length, sleep_h: sl ? round1(sleepH(sl)) : null, night_wakeups: sl ? (sl.wk || []).length : null, sport_min: st.mins, steps: st.steps,
+      spent: Math.round(sum(d.tx.filter((x) => x.type === 'exp' && !x.hist), (x) => x.amount)),
     });
   }
   const tx = S.tx.filter((x) => !x.hist && x.t >= w.from && x.t < w.to);
@@ -430,9 +443,42 @@ function weekData(w) {
   const byNote = {};
   tx.filter((x) => x.type === 'exp' && x.note && !x.rec).forEach((x) => { byNote[x.note] = (byNote[x.note] || 0) + x.amount; });
   const wIn = S.weights.filter((x) => x.t >= w.from && x.t < w.to).sort((a, c) => a.t - c.t);
+  // готовые факты — чтобы ИИ не пропустил важное (пересып, ни разу не добранные нормы, переедание)
+  const logged = days.filter((d) => d.meals_logged);
+  const slept = days.filter((d) => d.sleep_h != null);
+  const maxDay = logged.reduce((m, d) => (!m || d.kcal > m.kcal ? d : m), null);
+  const facts = {
+    days_with_food_logged: logged.length,
+    days_kcal_in_norm: logged.filter((d) => d.kcal >= d.kcal_need * 0.9 && d.kcal <= d.kcal_need * 1.1).length,
+    days_overeating_over_115pct: logged.filter((d) => d.kcal > d.kcal_need * 1.15).map((d) => `${d.day}: ${d.kcal} из ${d.kcal_need}`),
+    max_kcal_day: maxDay ? `${maxDay.day}: ${maxDay.kcal} ккал` : null,
+    days_protein_reached: logged.filter((d) => d.protein >= t.protein).length,
+    days_fiber_reached: logged.filter((d) => d.fiber >= t.fiber).length,
+    days_water_reached: days.filter((d) => d.water_ml >= d.water_need).length,
+    days_sleep_7_to_9h: slept.filter((d) => d.sleep_h >= 7 && d.sleep_h <= 9.5).length,
+    oversleep_days_over_10h: slept.filter((d) => d.sleep_h > 10).map((d) => `${d.day}: ${d.sleep_h} ч`),
+    short_sleep_days_under_6h: slept.filter((d) => d.sleep_h < 6).map((d) => `${d.day}: ${d.sleep_h} ч`),
+    nights_with_wakeups: slept.filter((d) => d.night_wakeups).length,
+    days_with_sport_or_6000_steps: days.filter((d) => d.sport_min >= 20 || d.steps >= 6000).length,
+    // «ни разу не добрал» — только по тому, что реально записывалось (пустые дни — пропуск учёта, а не провал)
+    never_reached: [
+      ['калории', logged.length >= 2, logged.some((d) => d.kcal >= d.kcal_need * 0.9 && d.kcal <= d.kcal_need * 1.1)],
+      ['белок', logged.length >= 2, logged.some((d) => d.protein >= t.protein)],
+      ['клетчатка', logged.length >= 2, logged.some((d) => d.fiber >= t.fiber)],
+      ['вода', days.filter((d) => d.water_ml > 0).length >= 2, days.some((d) => d.water_ml >= d.water_need)],
+      ['сон 7–9 ч', slept.length >= 2, slept.some((d) => d.sleep_h >= 7 && d.sleep_h <= 9.5)],
+    ].filter(([, enough, hit]) => enough && !hit).map(([n]) => n),
+  };
+  const incCat = {};
+  tx.filter((x) => x.type === 'inc' && !x.rec).forEach((x) => { const n = catOf('inc', x.cat).n.replace('­', ''); incCat[n] = (incCat[n] || 0) + x.amount; });
+  const bigExp = tx.filter((x) => x.type === 'exp').sort((a, c) => c.amount - a.amount).slice(0, 5).map((x) => `${catOf('exp', x.cat).n.replace('­', '')}${x.note ? ' (' + String(x.note).slice(0, 30) + ')' : ''}: ${Math.round(x.amount)}`);
+  const debts = typeof debtsSummary === 'function' ? debtsSummary().filter((d) => d.gave - d.back > 0.5).slice(0, 5).map((d) => `${String(d.name).slice(0, 20)}: ${Math.round(d.gave - d.back)}`) : [];
+  const loansLeft = (S.loans || []).map((l) => ({ name: String(l.name || '').slice(0, 30), left: typeof loanState === 'function' ? Math.round((() => { const st = loanState(l); return st.left != null ? st.left : st.debt || 0; })()) : null })).filter((l) => l.left);
   return {
+    facts,
+    work: { mental_load: ['лёгкая', 'средняя', 'высокая'][+S.profile.mind || 0], stress: ['низкий', 'средний', 'высокий'][+S.profile.stress || 0] },
     profile: { sex: S.profile.sex === 'f' ? 'ж' : 'м', age: S.profile.age, height: S.profile.height, weight: round1(weightProgress().cur), goal: GOALS[S.profile.goal].n },
-    targets: { kcal: t.kcal, protein: t.protein, fat: t.fat, carbs: t.carbs, water_ml: t.water },
+    targets: { kcal: t.kcal, protein: t.protein, fat: t.fat, carbs: t.carbs, fiber: t.fiber, water_ml: t.water, sleep_h: '7–9' },
     days,
     weight: { start_of_week: wIn[0] ? wIn[0].kg : null, end_of_week: wIn.length ? wIn[wIn.length - 1].kg : null, since_start: weightProgress().delta },
     money: {
@@ -441,6 +487,12 @@ function weekData(w) {
       by_category: Object.fromEntries(Object.entries(byCat).sort((a, c) => c[1] - a[1]).slice(0, 10).map(([k, v]) => [k, Math.round(v)])),
       top_places: Object.fromEntries(Object.entries(byNote).sort((a, c) => c[1] - a[1]).slice(0, 6).map(([k, v]) => [k, Math.round(v)])),
       balance_now: Math.round(sum(Object.values(balances()), (x) => x)),
+      income_by_category: Object.fromEntries(Object.entries(incCat).map(([k, v]) => [k, Math.round(v)])),
+      biggest_expenses: bigExp,
+      daily_spent: days.map((d) => `${d.day}: ${d.spent}`),
+      savings_rate_pct: (() => { const inc = sum(tx.filter((x) => x.type === 'inc' && !x.rec), (x) => x.amount), sp = sum(tx.filter((x) => x.type === 'exp'), (x) => x.amount); return inc ? Math.round(((inc - sp) / inc) * 100) : null; })(),
+      people_owe_me: debts,
+      loans_left: loansLeft,
     },
   };
 }
@@ -448,6 +500,7 @@ const COACH_SCHEMA = {
   type: 'OBJECT',
   properties: {
     score: { type: 'NUMBER' }, title: { type: 'STRING' }, summary: { type: 'STRING' },
+    alerts: { type: 'ARRAY', items: { type: 'STRING' } },
     food: { type: 'ARRAY', items: { type: 'STRING' } }, money: { type: 'ARRAY', items: { type: 'STRING' } }, body: { type: 'ARRAY', items: { type: 'STRING' } },
     goals: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, why: { type: 'STRING' } }, required: ['title'] } },
     adjust: { type: 'ARRAY', items: { type: 'OBJECT', properties: { param: { type: 'STRING', enum: ['kcal', 'protein', 'water'] }, value: { type: 'NUMBER' }, why: { type: 'STRING' } }, required: ['param', 'value', 'why'] } },
@@ -469,9 +522,10 @@ async function coachRun(force) {
 - score: оценка недели 1–10;
 - title: заголовок недели в 3–5 слов (в игровом стиле);
 - summary: 2–3 предложения — главное за неделю;
-- food: 2–4 конкретных совета по рациону (что добавить или убрать, какие доступные в Кыргызстане продукты, сколько добрать белка/ккал в день);
-- money: 2–4 совета по бюджету (на что ушло больше всего, где реально сэкономить и сколько сом, сравни с прошлой неделей);
-- body: 1–3 совета про сон, шаги и тренировки;
+- alerts: 1–5 коротких предупреждений по фактам из facts — ОБЯЗАТЕЛЬНО упомяни: каждую норму из never_reached («за неделю ни разу не добрал воду» и т.п.); каждый день из oversleep_days_over_10h (пересып тоже вреден: вялость, пропущенные дела, сбитый режим — скажи прямо); дни недосыпа; дни переедания из days_overeating_over_115pct с цифрами; ночные пробуждения, если их много. Если всё хорошо — 1 позитивный пункт;
+- food: 3–6 конкретных советов по питанию с цифрами: средние калории/белок/жиры/углеводы/клетчатка против нормы, в какие дни был перебор или недобор, сколько записано приёмов пищи, чем добрать белок и клетчатку из доступных в Кыргызстане продуктов;
+- money: 3–6 пунктов по казне с цифрами в сомах: доходы и расходы за неделю, процент сбережений (savings_rate_pct), топ-категории и самые крупные траты, в какой день потрачено больше всего, сравнение с прошлой неделей, долги людей и кредиты, где реально сэкономить и сколько;
+- body: 2–4 совета про сон (длительность, пересып, пробуждения), шаги и тренировки; учитывай work (умственная нагрузка и стресс: при высоком стрессе — режим сна, перекусы без сахара, прогулки);
 - goals: ровно 3 цели на эту неделю — измеримые и достижимые (например «5 дней из 7 добрать 100 г белка»);
 - adjust: 0–3 предложения поменять дневные нормы (param: kcal — калории, protein — белок в граммах, water — вода в мл; value — новое значение в день; why — коротко почему). Предлагай, только если данные это подтверждают: например, вес не растёт при наборе массы — поднять kcal на 150–250; воды стабильно мало — скорректировать норму. Текущие нормы — в targets.
 Без медицинских диагнозов. Если данных мало — начни с совета чаще записывать.
@@ -510,7 +564,8 @@ function openCoach(idx) {
   const sec = (ic, t, arr) => (arr && arr.length ? `<h3 style="font-size:15px;margin:16px 0 6px">${ic} ${t}</h3><ul class="coach-list">${arr.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
   openSheet(() => `${sheetHead('🧠 ' + esc(c.title || 'Разбор недели'))}
     <div class="row"><span class="coach-score">${Math.round(c.score)}<small>/10</small></span><div class="grow">${esc(c.summary)}</div></div>
-    ${sec('🍗', 'Питание', c.food)}${sec('💰', 'Бюджет', c.money)}${sec('😴', 'Сон и спорт', c.body)}
+    ${(c.alerts || []).length ? `<div class="coach-alerts"><b>⚠️ Обрати внимание</b><ul class="coach-list">${c.alerts.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+    ${sec('🍗', 'Питание', c.food)}${sec('💰', 'Казна', c.money)}${sec('😴', 'Сон и спорт', c.body)}
     ${(c.adjust || []).length ? `<h3 style="font-size:15px;margin:16px 0 6px">📈 Предлагаю поменять нормы</h3><div class="card list">${c.adjust.map((a, i) => { const lab = { kcal: ['🍗', 'Калории', 'ккал', targets().kcal], protein: ['🥩', 'Белок', 'г', targets().protein], water: ['💧', 'Вода', 'мл', targets().water] }[a.param] || ['⚙️', a.param, '', 0]; const applied = Math.round(lab[3]) === Math.round(a.value); return `<div class="item"><span class="ii">${lab[0]}</span><span class="grow"><div class="it">${lab[1]}: ${fmt(lab[3])} → <b class="gold">${fmt(a.value)} ${lab[2]}</b></div><div class="is" style="white-space:normal">${esc(a.why)}</div></span>${applied ? '<span class="green">✓</span>' : `<button class="btn gold sm" data-a="coachApply" data-v="${i}">Применить</button>`}</div>`; }).join('')}</div>` : ''}
     <h3 style="font-size:15px;margin:16px 0 6px">🎯 Цели на неделю <small class="dim">+30 XP за каждую</small></h3>
     <div class="card list">${c.goals.map((g, i) => `<button class="item" data-a="coachGoal" data-v="${i}"><span class="ii">${g.done ? '✅' : '⬜'}</span><span class="grow"><div class="it" style="white-space:normal">${esc(g.title)}</div>${g.why ? `<div class="is" style="white-space:normal">${esc(g.why)}</div>` : ''}</span></button>`).join('')}</div>

@@ -396,3 +396,27 @@ textarea { resize: none; }
 .sheet h3.vh { font-size: 15px; margin: 22px 0 8px; }
 .sheet h3.vh:first-child, .sheet .grabber + h3.vh { margin-top: 4px; }
 .nudges { margin-bottom: 12px; }
+
+/* v3.22: пробуждения ночью, ⭐ в мои блюда, блокнот благодарности, важное в разборе */
+.wk-card { padding: 6px 12px; }
+.wk-row { display: flex; align-items: center; gap: 6px; padding: 8px 0; min-height: 44px; }
+.wk-row + .wk-row { border-top: 1px solid var(--line); }
+.wk-row .btn.sm { padding: 8px 10px; min-height: 36px; }
+.wk-ic { font-size: 18px; width: 24px; text-align: center; }
+.fav-btn { margin-left: 4px; width: 36px; height: 36px; flex: none; border-radius: 10px; font-size: 20px; color: var(--muted); background: transparent; border: 1px solid var(--line); }
+.fav-btn.on { color: var(--gold); border-color: var(--gold); }
+.grat-card input { flex: 1; min-width: 0; }
+.grat-list .grat-text { -webkit-line-clamp: 4; }
+.sheet textarea { width: 100%; resize: vertical; font: inherit; }
+.coach-alerts { margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 159, 67, .1); border: 1px solid rgba(255, 159, 67, .35); }
+.coach-alerts .coach-list { margin: 6px 0 0; }
+[data-theme="soft"] .coach-alerts { background: #fff1e6; border-color: #f0c9a6; }
+[data-theme="comic"] .coach-alerts { border: 2px solid var(--ink); border-radius: 6px; background: #241400; }
+[data-theme="comic"] .fav-btn { border: 2px solid var(--ink); border-radius: 4px; }
+/* строка блюда в результатах ИИ/голоса: 2 линии — текст не сжимается на узком экране */
+.list .aiitem { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "ic txt kc" "ic ctl fav"; column-gap: 10px; row-gap: 8px; align-items: center; }
+.aiitem > .ii { grid-area: ic; align-self: start; }
+.aiitem > .grow { grid-area: txt; }
+.aiitem > .mini-step { grid-area: ctl; justify-self: start; }
+.aiitem > .iv { grid-area: kc; align-self: start; padding-top: 2px; }
+.aiitem > .fav-btn { grid-area: fav; justify-self: end; margin: 0; }

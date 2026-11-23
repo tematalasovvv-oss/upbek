@@ -25,7 +25,7 @@ function weekStats(off) {
     tot += dayPct(k).total; r.n++;
     if (st.water >= waterNeed(st)) r.water++;
     if (st.mins >= 20 || st.steps >= 6000) r.move++;
-    const sl = sleepOf(k); if (sl && sleepH(sl) >= 7) r.sleep++;
+    const sl = sleepOf(k); if (sl && sleepH(sl) >= 7 && sleepH(sl) <= 10) r.sleep++;
   }
   r.avg = r.n ? Math.round(tot / r.n) : 0;
   return r;

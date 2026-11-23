@@ -11,7 +11,7 @@ function dayPct(key) {
   const sl = sleepOf(key);
   const r = {
     kcal, prot: c(st.prot / t.protein), water: c(st.water / waterNeed(st)),
-    sleep: sl ? clamp(Math.round((sleepH(sl) / 8) * 100), 0, 100) : 0,
+    sleep: sl ? sleepScore(sl) : 0, // пересып и пробуждения снижают
     move: c(Math.max(st.mins / 30, st.steps / 8000)),
     fiber: c(st.fiber / t.fiber),
   };

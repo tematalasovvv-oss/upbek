@@ -68,7 +68,7 @@ function save(noCloud) {
 function validState(d) {
   const okId = (v) => v == null || (typeof v === 'string' && /^[\w-]{1,48}$/.test(v));
   const okColor = (v) => v == null || /^#[0-9a-f]{3,8}$/i.test(v);
-  const lists = ['tx', 'food', 'act', 'weights', 'sleep', 'water', 'customFoods', 'loans', 'accounts', 'coach'];
+  const lists = ['tx', 'food', 'act', 'weights', 'sleep', 'water', 'customFoods', 'loans', 'accounts', 'coach', 'grat'];
   for (const k of lists) {
     if (d[k] != null && !Array.isArray(d[k])) return false;
     for (const x of d[k] || []) {
@@ -98,7 +98,8 @@ function targets(p = S.profile) {
   const bmr = 10 * p.weight + 6.25 * p.height - 5 * p.age + (p.sex === 'f' ? -161 : 5);
   const base = bmr * (p.life || 1.2);
   const g = GOALS[p.goal] || GOALS.keep;
-  const kcal = +p.kcalOverride || Math.round((base + g.adj) / 50) * 50;
+  const mind = [0, 50, 100][+p.mind || 0] || 0; // умственная нагрузка на работе: мозг тратит немного больше
+  const kcal = +p.kcalOverride || Math.round((base + g.adj + mind) / 50) * 50;
   const protein = +p.proteinOverride || Math.round(p.weight * g.prot);
   const fat = Math.round(p.weight * 1.0);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
@@ -250,6 +251,7 @@ function game() {
   xp += sum(S.coach || [], (c) => (c.goals || []).filter((x) => x.done).length * 30);
   xp += Object.keys(S.pairDone || {}).length * 50; // парные квесты
   xp += cyCount('any') * 5; // отметки цикла и самочувствия
+  xp += new Set((Array.isArray(S.grat) ? S.grat : []).map((x) => dayKey(x.t))).size * 5; // благодарность: +5 за день
   // серия
   let streak = 0; const t = new Date(); t.setHours(12, 0, 0, 0);
   if (!b[dayKey(t)]) t.setDate(t.getDate() - 1);
@@ -520,7 +522,17 @@ function sleepGuess(off = 0) {
   return { bed, wake };
 }
 function sleepOf(key) { return S.sleep.find((s) => dayKey(s.wake) === key) || null; }
-function energyOf(s) { return s ? Math.round(clamp(sleepH(s) / 8, 0, 1) * 100) : null; }
+// оценка сна 0–100: до 7 ч — растёт, 7–9,5 ч — идеально, дальше пересып снижает (16 ч ≈ 0);
+// каждое ночное пробуждение −5 (максимум −20)
+function sleepScore(s) {
+  if (!s) return 0;
+  const h = sleepH(s);
+  let v = h < 7 ? (h / 8) * 100 : h <= 9.5 ? 100 : 100 - (h - 9.5) * 15;
+  v -= Math.min(20, ((s.wk || []).length) * 5);
+  return Math.round(clamp(v, 0, 100));
+}
+const overslept = (s) => !!s && sleepH(s) > 10;
+function energyOf(s) { return s ? sleepScore(s) : null; }
 
 /* ---------- напоминалки: сон утром, сверка утром/вечером ---------- */
 function recDue() {
@@ -570,7 +582,7 @@ function renderHero() {
   const form = movePct(st);
   const formSub = st.steps / 8000 > st.mins / 30 ? `${fmt(st.steps)} / 8 000 шагов` : `${Math.round(st.mins)} / 30 мин сегодня`;
   const sl = sleepOf(dayKey()); const sh = sl ? sleepH(sl) : null;
-  const status = sh == null ? null : sh >= 7 ? ['⚡', 'Бодрость', 'buff'] : sh < 6 ? ['😴', 'Не выспался', 'debuff'] : ['🙂', 'Норм', ''];
+  const status = sh == null ? null : sh > 10 ? ['🥱', 'Пересып', 'debuff'] : sh >= 7 ? ['⚡', 'Бодрость', 'buff'] : sh < 6 ? ['😴', 'Не выспался', 'debuff'] : ['🙂', 'Норм', ''];
   const q = questsOf(g.today);
   const qDone = q.filter((x) => x.done).length;
   const unsorted = S.tx.filter(isUnsorted).length;
@@ -591,7 +603,7 @@ function renderHero() {
     <div class="attrs">
       ${attr('❤️', 'Сытость', hp, 'red', `${fmt(st.eaten)} / ${fmt(need)} ккал`).replace('<div class="attr">', '<div class="attr tap" data-a="tab" data-v="body">')}
       <div class="attr tap" data-a="tab" data-v="body"><span class="ai">🥩</span><div class="grow"><div class="row between"><b>БЖУ</b>${macroLegend(st, t)}</div>${macroBar(st, t)}</div><b class="ap num">${macroPct(st, t)}%</b></div>
-      ${attr('⚡', 'Энергия', energyOf(sl), 'gold', sh == null ? 'запиши сон' : 'сон ' + fmtH(sh))}
+      ${attr('⚡', 'Энергия', energyOf(sl), 'gold', sh == null ? 'запиши сон' : 'сон ' + fmtH(sh) + (sh > 10 ? ' · пересып' : '') + ((sl.wk || []).length ? ` · 🌙 ${sl.wk.length}` : ''))}
       ${attr('💧', 'Вода', Math.round((st.water / waterNeed(st)) * 100), 'blue', `${glasses(st.water)} из ${glasses(waterNeed(st))} стаканов · нажми +`).replace('<div class="attr">', '<div class="attr tap" data-a="foodSheet" data-v="water">')}
       ${attr('💪', 'Форма', form, 'green', formSub)}
     </div>
@@ -601,6 +613,7 @@ function renderHero() {
     </div>
   </div>
 
+  ${typeof gratCard === 'function' ? gratCard() : ''}
   ${typeof cycleEveningCard === 'function' ? cycleEveningCard() : ''}
   ${promptCards()}
   ${typeof pairCards === 'function' ? pairCards() : ''}
@@ -714,7 +727,8 @@ function sleepCard(key) {
     <div class="row between"><div><div class="dim">${key === dayKey() ? 'Прошлая ночь' : 'Ночь перед ' + dayLabel(key).toLowerCase()}</div><b style="font-size:24px">${s ? fmtH(sleepH(s)) : '—'}</b>${s ? `<div class="dim">${hhmm(s.bed)} → ${hhmm(s.wake)}</div>` : ''}</div>
     <button class="btn sm" data-a="foodSheet" data-v="sleep" data-keep="1">${s ? 'Изменить' : 'Записать'}</button></div>
     <div class="sleepbars">${days.map((k) => { const x = sleepOf(k); const h = x ? sleepH(x) : 0; const d = new Date(k + 'T12:00:00'); return `<div><i style="height:${clamp((h / 10) * 54, 2, 54)}px;${h && h < 6 ? 'background:linear-gradient(180deg,#ffb36b,#ff7a45)' : ''}${!h ? ';background:var(--line)' : ''}"></i>${h ? round1(h) : '·'}<br>${['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][d.getDay()]}</div>`; }).join('')}</div>
-    <div class="note">Мышцы растут во сне. 7–9 часов → ⚡ Энергия героя и +25 XP.</div>
+    ${s && (s.wk || []).length ? `<div class="dim" style="margin-top:6px">🌙 Просыпался: ${s.wk.length} раз${s.wk.some((w) => w.t) ? ' · ' + s.wk.filter((w) => w.t).map((w) => hhmm(w.t)).join(', ') : ''}</div>` : ''}
+    <div class="note">Мышцы растут во сне. 7–9 часов → ⚡ Энергия героя и +25 XP. Больше 10 часов — пересып: энергия падает.</div>
   </div>`;
 }
 
@@ -725,7 +739,7 @@ function openHub() {
     <button class="big3 voicebtn" data-a="voice"><span class="ic">🎤</span><span><b>Сказать голосом</b><small>Просто опиши, что и на что потратил</small></span></button>
     <button class="big3" data-a="money" data-v="exp"><span class="ic">💰</span><span><b>Деньги</b><small>расход · доход · перевод</small></span></button>
     <button class="big3" data-a="foodSheet" data-v="food"><span class="ic">🍗</span><span><b>Еда</b><small>что съел · вода · шаги · вес · сон</small></span></button>
-    <button class="big3" data-a="sport"><span class="ic">🏃</span><span><b>Спорт</b><small>прогулка · фитнес</small></span></button>
+    <button class="big3" data-a="sport"><span class="ic">🏃</span><span><b>Спорт</b><small>прогулка · фитнес · шаги</small></span></button>
     ${typeof cycleOn === 'function' && cycleOn() ? '<button class="big3" data-a="cyDay" data-v="' + dayKey() + '"><span class="ic">🌸</span><span><b>Цикл</b><small>выделения · симптомы · настроение</small></span></button>' : ''}
   </div>`);
 }
@@ -776,11 +790,18 @@ function renderFoodSheet() {
   if (UI.fs === 'sleep') {
     const s = UI.sl, h = sleepH(s);
     const tp = (k, label) => `<div class="tp"><button data-a="slAdj" data-v="${k}:-60">−1ч</button><button data-a="slAdj" data-v="${k}:-15">−15</button><div class="grow" style="text-align:center"><div class="dim">${label}</div><b class="num">${hhmm(s[k])}</b></div><button data-a="slAdj" data-v="${k}:15">+15</button><button data-a="slAdj" data-v="${k}:60">+1ч</button></div>`;
+    const wk = s.wk || [];
+    const wkRow = (w, i) => `<div class="wk-row"><span class="wk-ic">🌙</span><span class="grow">${w.t ? `<b class="num">${hhmm(w.t)}</b>` : '<span class="dim">время не помню</span>'}</span>${w.t ? `<button class="btn ghost sm" data-a="wkAdj" data-v="${i}:-30" aria-label="Раньше на 30 минут">−30</button><button class="btn ghost sm" data-a="wkAdj" data-v="${i}:30" aria-label="Позже на 30 минут">+30</button>` : `<button class="btn ghost sm" data-a="wkTime" data-v="${i}">🕐 Указать</button>`}<button class="btn ghost sm" data-a="wkDel" data-v="${i}" aria-label="Убрать">✕</button></div>`;
+    const tl = h > 10 ? '🥱 Пересып — после 10+ ч часто вялость, и день «съедается»' : h >= 7 ? '⚡ Отличный сон — +25 XP' : h < 6 ? '😴 Маловато — герой устанет' : '🙂 Неплохо, но лучше 7+ ч';
     return `${head}
-    <div class="total" style="margin:2px 0 12px"><div class="tv">${fmtH(h)}</div><div class="tl">${h >= 7 && h <= 10 ? '⚡ Отличный сон — +25 XP' : h < 6 ? '😴 Маловато — герой устанет' : h > 10 ? '🛌 Многовато' : '🙂 Неплохо, но лучше 7+ ч'}</div></div>
+    <div class="total" style="margin:2px 0 12px"><div class="tv">${fmtH(h)}</div><div class="tl">${tl}</div><div class="tl">Качество сна: <b class="num">${sleepScore(s)}%</b></div></div>
     ${tp('bed', '😴 Уснул')}
     ${tp('wake', '☀️ Проснулся')}
-    <button class="btn gold" style="margin-top:6px" data-a="slSave">Сохранить</button>
+    <h3 class="vh">🌙 Просыпался ночью?</h3>
+    ${wk.length ? `<div class="card wk-card">${wk.map(wkRow).join('')}</div>` : ''}
+    <button class="btn ghost" data-a="wkAdd">＋ ${wk.length ? 'Ещё пробуждение' : 'Да, просыпался'}</button>
+    <div class="dim" style="margin-top:6px">Не помнишь во сколько — просто отметь. Каждое пробуждение немного снижает качество сна.</div>
+    <button class="btn gold" style="margin-top:16px" data-a="slSave">Сохранить</button>
     ${s.id ? '<button class="btn danger" style="margin-top:8px" data-a="slDel">Удалить</button>' : ''}
     <div class="note">Время подставлено по твоим привычкам и по тому, когда ты вчера последний раз закрыл UpBek. Поправь кнопками, если не так.</div>`;
   }
@@ -805,12 +826,15 @@ function openSport(keepDay = false) {
   if (!keepDay) UI.foodDay = 0;
   UI.sp = UI.sp || 'walk';
   openSheet(() => `<div class="grabber"></div>
-  <div class="row" style="margin-bottom:12px"><div class="seg grow">${ACTS.filter((a) => !a.steps).map((a) => `<button class="${UI.sp === a.id ? 'on' : ''}" data-a="spKind" data-v="${a.id}">${a.ic} ${a.n}</button>`).join('')}</div><button class="x" data-a="close">✕</button></div>
+  <div class="row" style="margin-bottom:12px"><div class="seg grow">${ACTS.map((a) => `<button class="${UI.sp === a.id ? 'on' : ''}" data-a="spKind" data-v="${a.id}">${a.ic} ${a.n}</button>`).join('')}</div><button class="x" data-a="close">✕</button></div>
   ${UI.foodDay ? `<div class="hint">Запишется на ${dayLabel(viewDayKey()).toLowerCase()}</div>` : ''}
-  <p class="muted" style="margin-top:0">Сколько минут? Нажми — и готово.</p>
+  ${UI.sp === 'steps' ? `<p class="muted" style="margin-top:0">Сколько шагов за день? Цифра есть в приложении «Здоровье» на iPhone.</p>
+  <div class="chips wrap">${[3000, 5000, 8000, 10000, 12000, 15000].map((o) => `<button class="chip big" data-a="stepsSave" data-v="${o}">${fmt(o)}</button>`).join('')}</div>
+  <div class="row" style="margin-top:14px"><input id="stepsCustom" inputmode="numeric" placeholder="Своё число шагов"><button class="btn sm" style="padding:12px 16px" data-a="stepsSave" data-v="custom">OK</button></div>
+  <div class="note">6000+ шагов закрывают квест «Тренировка дня». Шаги за день — одна запись: новая цифра заменит старую.</div>` : `<p class="muted" style="margin-top:0">Сколько минут? Нажми — и готово.</p>
   <div class="chips wrap">${[10, 15, 20, 30, 45, 60, 90].map((o) => `<button class="chip big" data-a="spSave" data-v="${o}">${o} мин</button>`).join('')}</div>
   <div class="row" style="margin-top:14px"><input id="spCustom" inputmode="numeric" placeholder="Своё число минут"><button class="btn sm" style="padding:12px 16px" data-a="spSave" data-v="custom">OK</button></div>
-  ${UI.sp === 'gym' ? '<div class="note">После перерыва: первые 2–3 недели — лёгкие веса и техника, нагрузку поднимай постепенно.</div>' : '<div class="note">20+ минут закрывают квест «Тренировка дня».</div>'}`);
+  ${UI.sp === 'gym' ? '<div class="note">После перерыва: первые 2–3 недели — лёгкие веса и техника, нагрузку поднимай постепенно.</div>' : '<div class="note">20+ минут закрывают квест «Тренировка дня».</div>'}`}`);
 }
 function weightChart() {
   const ws = [...S.weights].sort((a, b) => a.t - b.t).slice(-30);
@@ -1246,8 +1270,9 @@ function actKcal(A, val) {
 
 function saveSleep(s) {
   const h = sleepH(s); const key = dayKey(s.wake);
-  act(() => { S.sleep = S.sleep.filter((x) => x.id !== s.id && dayKey(x.wake) !== key); S.sleep.push({ id: s.id || uid(), bed: s.bed, wake: s.wake }); },
-    `😴 Сон ${fmtH(h)} записан${h >= 7 && h <= 10 ? ' · ⚡ бодрость' : ''}`);
+  const wk = (s.wk || []).slice(0, 10).map((w) => ({ t: w.t ? +w.t : null }));
+  act(() => { S.sleep = S.sleep.filter((x) => x.id !== s.id && dayKey(x.wake) !== key); S.sleep.push({ id: s.id || uid(), bed: s.bed, wake: s.wake, ...(wk.length ? { wk } : {}) }); },
+    `😴 Сон ${fmtH(h)} записан${h > 10 ? ' · 🥱 пересып' : h >= 7 ? ' · ⚡ бодрость' : ''}${wk.length ? ` · 🌙 ${wk.length}` : ''}`);
 }
 
 /* ---------- Ещё: профиль, счета, данные ---------- */
@@ -1272,13 +1297,14 @@ function renderMe() {
     <button class="item" data-a="pairOpen"><span class="ii">💑</span><span class="grow"><div class="it">Пара</div><div class="is">${S.pair && S.pair.mate ? 'Партнёр: ' + esc(S.pair.mate.name) + ' · дуэль и квесты' : S.pair && S.pair.code ? 'Ждём партнёра · код ' + esc(S.pair.code) : 'Дуэль недели, парные квесты, подбодрить'}</div></span><span>›</span></button>
     <button class="item" data-a="aiSheet"><span class="ii">✨</span><span class="grow"><div class="it">ИИ (Gemini)</div><div class="is">${typeof aiReady === 'function' && aiReady() ? 'Подключён · разборы недели' : 'Не подключён'}</div></span><span>›</span></button>
     <button class="item" data-a="achSheet"><span class="ii">🏆</span><span class="grow"><div class="it">Достижения</div><div class="is">${achList().filter((a) => g.ach.includes(a[0])).length} из ${achList().length}</div></span><span>›</span></button>
+    <button class="item" data-a="gratOpen"><span class="ii">🙏</span><span class="grow"><div class="it">Блокнот благодарности</div><div class="is">${typeof gratOn === 'function' && gratOn() ? `Напоминание в ${gratHour()}:00` : 'Записи и напоминание по желанию'}</div></span><span>›</span></button>
     <button class="item" data-a="entrySheet"><span class="ii">✍️</span><span class="grow"><div class="it">Добавление записей</div><div class="is">${askQtyOn() ? 'Спрашивать количество еды' : 'В 1 касание, без вопросов'}</div></span><span>›</span></button>
     <button class="item" data-a="themeSheet"><span class="ii">🎨</span><span class="grow"><div class="it">Тема оформления</div><div class="is">${themeName}</div></span><span>›</span></button>
     <button class="item" data-a="backupSheet"><span class="ii">💾</span><span class="grow"><div class="it">Резервное копирование</div><div class="is">Облако, код восстановления, файл</div></span><span>›</span></button>
     <button class="item" data-a="appUpdate"><span class="ii">🔄</span><span class="grow"><div class="it">Обновить приложение</div></span></button>
     <button class="item" data-a="clearSheet"><span class="ii">🧹</span><span class="grow"><div class="it">Очистить данные</div><div class="is">Записи или всё целиком</div></span><span>›</span></button>
   </div>
-  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.21</p>
+  <p class="dim" style="text-align:center;margin-top:20px">UpBek v3.22</p>
   `;
 }
 function openAchSheet() {
@@ -1325,6 +1351,10 @@ function openProfile() {
       <div class="field"><label>Своя норма белка, г</label><input id="pP" inputmode="numeric" value="${p.proteinOverride || ''}" placeholder="авто: ${t.protein}"></div>
     </div>
     <div class="field"><label>Своя норма воды, мл</label><input id="pWa" inputmode="numeric" value="${p.waterOverride || ''}" placeholder="авто: ${t.water}"></div>
+    <h3 class="vh">🧠 Работа и стресс</h3>
+    <div class="field"><label>Умственная нагрузка на работе</label><div class="seg">${['Лёгкая', 'Средняя', 'Высокая'].map((n, i) => `<button class="${(+p.mind || 0) === i ? 'on' : ''}" data-a="pMind" data-v="${i}">${n}</button>`).join('')}</div></div>
+    <div class="field"><label>Уровень стресса</label><div class="seg">${['Низкий', 'Средний', 'Высокий'].map((n, i) => `<button class="${(+p.stress || 0) === i ? 'on' : ''}" data-a="pStress" data-v="${i}">${n}</button>`).join('')}</div></div>
+    <div class="note" style="margin-bottom:12px">Умственная работа добавляет к норме ${['0', '+50', '+100'][+p.mind || 0]} ккал — мозг тратит энергию, но немного. Стресс почти не меняет расход, зато влияет на аппетит, сон и тягу к сладкому — это учтёт ИИ-тренер в разборе недели.</div>
     <button class="btn gold" data-a="pSave">Сохранить</button>`;
   });
 }
@@ -1540,6 +1570,10 @@ const A = {
     UI.sl = s; refreshSheet();
   },
   slSave: () => { const s = UI.sl; closeSheet(); saveSleep(s); },
+  wkAdd: () => { const s = UI.sl; s.wk = [...(s.wk || []), { t: null }].slice(0, 10); refreshSheet(); },
+  wkDel: (el) => { const s = UI.sl; s.wk = (s.wk || []).filter((_, i) => i !== +el.dataset.v); refreshSheet(); },
+  wkTime: (el) => { const s = UI.sl; const w = s.wk[+el.dataset.v]; if (!w) return; const mid = s.bed + (s.wake - s.bed) / 2; w.t = Math.round(mid / 9e5) * 9e5; refreshSheet(); },
+  wkAdj: (el) => { const [i, d] = el.dataset.v.split(':'); const s = UI.sl; const w = s.wk[+i]; if (!w || !w.t) return; w.t = clamp(w.t + +d * 60000, s.bed + 15 * 60000, s.wake - 15 * 60000); refreshSheet(); },
   slQuick: () => saveSleep(sleepGuess(0)),
   slDel: () => { const id = UI.sl.id; const old = S.sleep.find((x) => x.id === id); closeSheet(); act(() => { S.sleep = S.sleep.filter((x) => x.id !== id); }, 'Удалено', () => act(() => S.sleep.push(old), 'Восстановлено')); },
   slSkip: () => { S.sleepSkip = dayKey(); save(); render(); },
@@ -1549,6 +1583,8 @@ const A = {
   profile: openProfile,
   pSex: (el) => { const p = S.profile && UI.sheetFn ? UI.pd : UI.ob.d; readProfileInputs(p); p.sex = el.dataset.v; S.profile && UI.sheetFn ? refreshSheet() : render(); },
   pGoal: (el) => { const p = S.profile && UI.sheetFn ? UI.pd : UI.ob.d; readProfileInputs(p); p.goal = el.dataset.v; S.profile && UI.sheetFn ? refreshSheet() : render(); },
+  pMind: (el) => { readProfileInputs(UI.pd); UI.pd.mind = clamp(+el.dataset.v, 0, 2); refreshSheet(); },
+  pStress: (el) => { readProfileInputs(UI.pd); UI.pd.stress = clamp(+el.dataset.v, 0, 2); refreshSheet(); },
   pLife: (el) => { const p = S.profile && UI.sheetFn ? UI.pd : UI.ob.d; readProfileInputs(p); p.life = +el.dataset.v; S.profile && UI.sheetFn ? refreshSheet() : render(); },
   pSave: () => {
     const p = UI.pd; readProfileInputs(p);
