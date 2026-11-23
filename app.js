@@ -52,7 +52,7 @@ function wholeWord(s, w) {
 }
 
 /* ---------- данные ---------- */
-const APP_VER = '3.23';
+const APP_VER = '3.24';
 function fresh() {
   return { v: 1, profile: null, accounts: [], main: null, tx: [], food: [], act: [], weights: [], customFoods: [], usage: {}, sleep: [], water: [], loans: [], cycle: null, pair: null, pairDone: {}, prefs: { askQty: false }, bedMarks: [], cloud: null, coach: [], sleepSkip: null, recSkip: null, lastHidden: null, lastLevel: 1, seenAch: [], created: Date.now() };
 }

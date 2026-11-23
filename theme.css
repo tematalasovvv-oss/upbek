@@ -434,3 +434,22 @@ textarea { resize: none; }
 .ctab-legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11px; color: var(--muted); padding-left: 4px; }
 .ctab-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
 .ctab-legend i.ok { background: var(--green); } .ctab-legend i.bad { background: var(--orange, #ff9f43); }
+
+/* казна в цифрах (v3.24) */
+.mday { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; align-items: end; margin: 8px 0 4px; text-align: center; }
+.mday > div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; min-width: 0; }
+.mday i { display: block; width: 70%; max-width: 22px; border-radius: 4px 4px 2px 2px; background: var(--line); }
+.mday i[style*="height"]:not([style*="height:2px"]) { background: linear-gradient(180deg, #ff8a96, var(--red)); opacity: .75; }
+.mday i.top { opacity: 1; }
+.mday b { font-size: 10px; white-space: nowrap; }
+.mday span { font-size: 10px; color: var(--muted); }
+.mtab { margin-top: 10px; }
+.mtab tbody th { font-weight: 600; color: var(--text); white-space: normal; max-width: 120px; }
+.mtab td { white-space: nowrap; }
+.mtab .cic { margin-right: 5px; }
+.ctab-wrap .up { color: var(--red); font-weight: 700; }
+.ctab-wrap .down { color: var(--green); font-weight: 700; }
+.mtab thead th:first-child { text-align: left; padding-left: 4px; }
+.ctab td.na { font-size: 11px; }
+[data-theme="soft"] .mday i[style*="height"]:not([style*="height:2px"]) { background: linear-gradient(180deg, #e9819a, #c73e5e); }
+[data-theme="comic"] .mday i { border-radius: 0; border: 1.5px solid var(--ink); }

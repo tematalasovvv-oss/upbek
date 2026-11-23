@@ -562,20 +562,61 @@ function coachCard() {
     <div class="dim" style="margin-top:8px;text-align:left">🎯 Цели недели: ${done} / ${c.goals.length} · +30 XP за каждую</div>
   </button>`;
 }
-// «Неделя в цифрах» — считается на телефоне, без ИИ: видно всё, даже если ИИ ответил кратко
+// «Неделя в цифрах» — считается на телефоне, без ИИ: видно всё, даже если ИИ ответил кратко.
+// Цвет: зелёный — в норме, оранжевый — сильно выше или ниже нормы, без цвета — немного не дотянул.
+const ctCell = (v, st) => `<td class="${st || ''}">${v}</td>`;
+function ctState(val, need, { lo = 0.9, hi = 1.1, farLo = 0.5, farHi = 1.15, upOnly = false } = {}) {
+  if (val == null || !need) return '';
+  const r = val / need;
+  if (upOnly) return r >= 1 ? 'ok' : r < farLo ? 'bad' : '';
+  return r >= lo && r <= hi ? 'ok' : r < farLo || r > farHi ? 'bad' : '';
+}
 function coachTable(weekKey) {
   const from = new Date(weekKey + 'T00:00:00').getTime(); if (!from) return '';
   const d = weekData({ from, to: from + 7 * DAY, key: weekKey }), t = targets();
-  const days = d.days, has = (x) => x.meals_logged || x.sleep_h != null || x.water_ml || x.spent;
-  if (!days.some(has)) return '';
-  const cell = (v, ok, bad) => `<td class="${ok ? 'ok' : bad ? 'bad' : ''}">${v}</td>`;
-  const rows = days.map((x) => `<tr><th>${x.day}</th>${x.meals_logged ? cell(fmt(x.kcal), x.kcal >= x.kcal_need * 0.9 && x.kcal <= x.kcal_need * 1.1, x.kcal > x.kcal_need * 1.15) + cell(x.protein, x.protein >= t.protein) + cell(dec(x.fiber), x.fiber >= t.fiber) : '<td class="na" colspan="3">—</td>'}${cell(x.water_ml ? dec(x.water_ml / 1000) : '—', x.water_ml >= x.water_need)}${cell(x.sleep_h != null ? dec(x.sleep_h) : '—', x.sleep_h >= 7 && x.sleep_h <= 9.5, x.sleep_h != null && (x.sleep_h > 10 || x.sleep_h < 6))}${cell(x.spent ? fmt(x.spent) : '—')}</tr>`).join('');
-  const f = d.facts, m = d.money;
+  const days = d.days;
+  if (!days.some((x) => x.meals_logged || x.sleep_h != null || x.water_ml)) return '';
+  const rows = days.map((x) => {
+    const food = x.meals_logged
+      ? ctCell(fmt(x.kcal), ctState(x.kcal, x.kcal_need, { farLo: 0.75 })) + ctCell(x.protein, ctState(x.protein, t.protein, { upOnly: true })) + ctCell(dec(x.fiber), ctState(x.fiber, t.fiber, { upOnly: true }))
+      : '<td class="na" colspan="3">не записано</td>';
+    const water = x.water_ml ? ctCell(dec(x.water_ml / 1000), ctState(x.water_ml, x.water_need, { upOnly: true })) : ctCell('—', 'na');
+    const sl = x.sleep_h != null ? ctCell(dec(x.sleep_h), x.sleep_h >= 7 && x.sleep_h <= 9.5 ? 'ok' : x.sleep_h < 6 || x.sleep_h > 10 ? 'bad' : '') : ctCell('—', 'na');
+    return `<tr><th>${x.day}</th>${food}${water}${sl}</tr>`;
+  }).join('');
   return `<h3 class="vh">📊 Неделя в цифрах</h3>
-  <div class="card ctab-wrap"><table class="ctab"><thead><tr><th></th><th>ккал</th><th>белок</th><th>🌾</th><th>вода, л</th><th>сон, ч</th><th>траты</th></tr></thead><tbody>${rows}</tbody></table>
-  <div class="ctab-legend"><span><i class="ok"></i>в норме</span><span><i class="bad"></i>перебор / пересып</span></div>
-  <div class="split" style="margin-top:10px"><div><span>Доходы</span><b class="num green">+${fmt(m.income)}</b></div><div><span>Расходы</span><b class="num red">−${fmt(m.spent)}</b></div></div>
-  <div class="dim" style="margin-top:8px">Нормы: ${fmt(t.kcal)} ккал · белок ${t.protein} г · клетчатка ${t.fiber} г · вода ${dec(t.water / 1000)} л · сон 7–9 ч${m.savings_rate_pct != null ? ` · отложено ${m.savings_rate_pct}% дохода` : ''}${f.days_with_food_logged ? ` · еда записана ${f.days_with_food_logged} дн. из 7` : ''}</div></div>`;
+  <div class="card ctab-wrap"><table class="ctab"><thead><tr><th></th><th>ккал</th><th>белок</th><th>🌾</th><th>вода, л</th><th>сон, ч</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="ctab-legend"><span><i class="ok"></i>в норме</span><span><i class="bad"></i>сильно выше или ниже нормы</span></div>
+  <div class="dim" style="margin-top:6px;padding-left:4px">Без цвета — немного не дотянул. Нормы: ${fmt(t.kcal)} ккал · белок ${t.protein} г · клетчатка ${t.fiber} г · вода ${dec(t.water / 1000)} л · сон 7–9 ч${d.facts.days_with_food_logged ? ` · еда записана ${d.facts.days_with_food_logged} дн. из 7` : ''}</div></div>
+  ${coachMoneyTable(weekKey, d)}`;
+}
+// «Казна в цифрах»: расходы по дням и по категориям, сравнение с прошлой неделей
+function coachMoneyTable(weekKey, d) {
+  const from = new Date(weekKey + 'T00:00:00').getTime(), to = from + 7 * DAY;
+  const exp = (a, b) => S.tx.filter((x) => !x.hist && x.type === 'exp' && x.t >= a && x.t < b);
+  const cur = exp(from, to), prev = exp(from - 7 * DAY, from);
+  const inc = sum(S.tx.filter((x) => !x.hist && x.type === 'inc' && !x.rec && x.t >= from && x.t < to), (x) => x.amount);
+  if (!cur.length && !inc) return '';
+  const total = sum(cur, (x) => x.amount), totalPrev = sum(prev, (x) => x.amount);
+  // группируем по названию категории (неизвестные коды сливаются в одну «Другое»)
+  const by = (list) => { const m = {}; list.forEach((x) => { const k = String(catOf('exp', x.cat).n).replace('­', ''); m[k] = (m[k] || 0) + x.amount; }); return m; };
+  const icOf = (name) => { const x = cur.find((t) => String(catOf('exp', t.cat).n).replace('­', '') === name); return x ? catOf('exp', x.cat).ic : '📦'; };
+  const bc = by(cur), bp = by(prev);
+  const cats = Object.keys(bc).sort((a, b) => bc[b] - bc[a]);
+  const top = cats.slice(0, 7), rest = cats.slice(7);
+  const diff = (a, b) => { if (!b) return '<span class="dim">новое</span>'; const p = Math.round(((a - b) / b) * 100); return p === 0 ? '<span class="dim">0%</span>' : `<span class="${p > 0 ? 'up' : 'down'}">${p > 0 ? '+' : ''}${p}%</span>`; };
+  const row = (ic, n, a, b) => `<tr><th><span class="cic">${ic}</span>${esc(n)}</th><td class="num">${fmt(a)}</td><td>${total ? Math.round((a / total) * 100) : 0}%</td><td>${diff(a, b)}</td></tr>`;
+  const catRows = top.map((k) => row(icOf(k), k, bc[k], bp[k] || 0)).join('')
+    + (rest.length ? row('…', `Другое (${rest.length})`, sum(rest, (k) => bc[k]), sum(rest, (k) => bp[k] || 0)) : '');
+  const perDay = d.days.map((x) => x.spent), maxD = Math.max(1, ...perDay);
+  const saved = inc ? Math.round(((inc - total) / inc) * 100) : null;
+  return `<h3 class="vh">💰 Казна в цифрах</h3>
+  <div class="card ctab-wrap">
+    <div class="split" style="margin-top:0"><div><span>Доходы</span><b class="num green">+${fmt(inc)}</b></div><div><span>Расходы</span><b class="num red">−${fmt(total)}</b></div></div>
+    <div class="dim" style="margin:8px 0 4px;padding-left:4px">${saved != null ? `Отложено ${saved}% дохода · ` : ''}к прошлой неделе: ${totalPrev ? diff(total, totalPrev) : 'нет данных'}</div>
+    <div class="mday">${d.days.map((x) => `<div><i style="height:${x.spent ? Math.max(4, Math.round((x.spent / maxD) * 44)) : 2}px"${x.spent === maxD && x.spent ? ' class="top"' : ''}></i><b class="num">${x.spent ? (x.spent >= 1000 ? dec(x.spent / 1000) + 'к' : fmt(x.spent)) : '—'}</b><span>${x.day}</span></div>`).join('')}</div>
+    ${cats.length ? `<table class="ctab mtab"><thead><tr><th>Категория</th><th>сом</th><th>доля</th><th>к прошл.</th></tr></thead><tbody>${catRows}</tbody></table>` : ''}
+  </div>`;
 }
 function openCoach(idx) {
   if (idx == null || !S.coach || !S.coach[idx]) idx = (S.coach || []).length - 1;
