@@ -42,7 +42,9 @@ async function aiCall(parts, schema) {
   // «размышления» модели для наших задач не нужны и сильно тормозят — выключаем
   const think = (m) => (/gemini-2\.5-flash/.test(m) ? { thinkingBudget: 0 } : /gemini-3/.test(m) ? { thinkingLevel: 'low' } : null);
   let noThink = !!c.noThink;
-  const mkBody = (m) => JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: schema, ...(!noThink && think(m) ? { thinkingConfig: think(m) } : {}) } });
+  const strip = (o) => (Array.isArray(o) ? o.map(strip) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'minItems' && k !== 'maxItems').map(([k, v]) => [k, strip(v)])) : o);
+  let sch = schema, stripped = false;
+  const mkBody = (m) => JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: sch, ...(!noThink && think(m) ? { thinkingConfig: think(m) } : {}) } });
   let last = '';
   for (let mi = 0; mi < models.length; mi++) {
     if (mi > 0) aiStatus('Основная модель занята — пробую запасную…');
@@ -60,6 +62,7 @@ async function aiCall(parts, schema) {
       }
       last = (j.error && j.error.message) || 'HTTP ' + r.status;
       if (r.status === 400 && /think/i.test(last) && !noThink) { noThink = true; aiSaveCfg({ ...aiCfg(), noThink: true }); attempt--; continue; }
+      if (r.status === 400 && !stripped && /min_?items|max_?items|schema|Invalid JSON payload/i.test(last)) { stripped = true; sch = strip(schema); attempt--; continue; }
       if (![429, 500, 502, 503, 504].includes(r.status)) throw new Error(aiErr(last));
       if (/per ?day|PerDay|daily/i.test(last)) break; // дневной лимит этой модели — сразу к запасной
       const rd = ((j.error && j.error.details) || []).find((d) => d.retryDelay);
@@ -474,7 +477,25 @@ function weekData(w) {
   const bigExp = tx.filter((x) => x.type === 'exp').sort((a, c) => c.amount - a.amount).slice(0, 5).map((x) => `${catOf('exp', x.cat).n.replace('­', '')}${x.note ? ' (' + String(x.note).slice(0, 30) + ')' : ''}: ${Math.round(x.amount)}`);
   const debts = typeof debtsSummary === 'function' ? debtsSummary().filter((d) => d.gave - d.back > 0.5).slice(0, 5).map((d) => `${String(d.name).slice(0, 20)}: ${Math.round(d.gave - d.back)}`) : [];
   const loansLeft = (S.loans || []).map((l) => ({ name: String(l.name || '').slice(0, 30), left: typeof loanState === 'function' ? Math.round((() => { const st = loanState(l); return st.left != null ? st.left : st.debt || 0; })()) : null })).filter((l) => l.left);
+  // полный журнал недели — чтобы ИИ видел каждую операцию с комментарием и каждое блюдо
+  // (данные цикла и блокнот благодарности сюда НЕ попадают)
+  const dn = (t) => ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][new Date(t).getDay()];
+  const accName = (id) => { const a = accById(id); return a ? String(a.name).slice(0, 20) : ''; };
+  const operations = S.tx.filter((x) => !x.hist && x.t >= w.from && x.t < w.to).sort((a, c) => a.t - c.t).slice(0, 250).map((x) => ({
+    day: dn(x.t), time: hhmm(x.t),
+    type: x.type === 'exp' ? 'расход' : x.type === 'inc' ? 'доход' : 'перевод между своими счетами',
+    category: x.type === 'tr' ? `${accName(x.acc)} → ${accName(x.to)}` : String(catOf(x.type, x.cat).n).replace('\u00AD', ''),
+    amount: Math.round(x.amount), note: String(x.note || '').slice(0, 60), ...(x.rec ? { regular: true } : {}),
+  }));
+  const food_log = S.food.filter((x) => x.t >= w.from && x.t < w.to).sort((a, c) => a.t - c.t).slice(0, 200).map((x) => ({
+    day: dn(x.t), time: hhmm(x.t), name: String(x.name || '').slice(0, 40), amount: amountText(x.unit, x.qty), kcal: Math.round(foodKcal(x)), protein: Math.round(foodProt(x)), fiber: round1((x.fb || 0) * x.qty),
+  }));
+  const activity_log = S.act.filter((x) => x.t >= w.from && x.t < w.to).map((x) => ({ day: dn(x.t), kind: x.steps ? 'шаги' : (actById(x.kind) || {}).n || x.kind, ...(x.steps ? { steps: x.steps } : { minutes: x.min }) }));
+  const byCatPrev = {};
+  prevTx.forEach((x) => { const n = catOf('exp', x.cat).n.replace('­', ''); byCatPrev[n] = (byCatPrev[n] || 0) + x.amount; });
+  const category_vs_prev_week = Object.entries(byCat).sort((a, c) => c[1] - a[1]).map(([k, v]) => ({ category: k, this_week: Math.round(v), prev_week: Math.round(byCatPrev[k] || 0) }));
   return {
+    operations, food_log, activity_log, category_vs_prev_week,
     facts,
     work: { mental_load: ['лёгкая', 'средняя', 'высокая'][+S.profile.mind || 0], stress: ['низкий', 'средний', 'высокий'][+S.profile.stress || 0] },
     profile: { sex: S.profile.sex === 'f' ? 'ж' : 'м', age: S.profile.age, height: S.profile.height, weight: round1(weightProgress().cur), goal: GOALS[S.profile.goal].n },
@@ -518,12 +539,12 @@ function cleanAdjust(list) {
   }).map((a) => ({ ...a, from: cur[a.param] }));
 }
 async function coachRun(force) {
-  if (!aiReady() || UI.coachBusy || !S.profile) return;
+  if (!aiReady() || UI.coachBusy || !S.profile) { UI.coachErr = aiReady() ? 'разбор уже идёт' : 'ИИ не подключён'; return false; }
   const w = lastWeek();
   if (!force && (S.coach || []).some((c) => c.week === w.key)) return;
   const data = weekData(w);
   const hasData = data.days.some((d) => d.meals_logged || d.sleep_h || d.sport_min) || data.money.spent;
-  if (!hasData) { if (force) toast('За прошлую неделю почти нет записей — разбирать нечего'); return; }
+  if (!hasData) { UI.coachErr = 'за прошлую неделю почти нет записей — разбирать нечего'; if (force) toast('За прошлую неделю почти нет записей — разбирать нечего'); return false; }
   UI.coachBusy = true; if (UI.tab === 'hero' && !UI.sheetFn) render();
   try {
     const prompt = `Ты — тренер и финансовый наставник героя в RPG-приложении UpBek (Кыргызстан, валюта сом). Говори на «ты», дружелюбно, кратко, только по делу и с цифрами из данных.
@@ -534,12 +555,12 @@ async function coachRun(force) {
 - summary: 2–3 предложения — главное за неделю, с цифрами;
 ВАЖНО: каждый пункт — 1–2 предложения и обязательно с конкретной цифрой из данных (ккал, граммы, литры, часы, сомы, дни из 7). Без общих фраз вроде «питайся правильно».
 - alerts: 1–5 коротких предупреждений по фактам из facts — ОБЯЗАТЕЛЬНО упомяни: каждую норму из never_reached («за неделю ни разу не добрал воду» и т.п.); каждый день из oversleep_days_over_10h (пересып тоже вреден: вялость, пропущенные дела, сбитый режим — скажи прямо); дни недосыпа; дни переедания из days_overeating_over_115pct с цифрами; ночные пробуждения, если их много. Если всё хорошо — 1 позитивный пункт;
-- food: 3–6 конкретных советов по питанию с цифрами: средние калории/белок/жиры/углеводы/клетчатка против нормы, в какие дни был перебор или недобор, сколько записано приёмов пищи, чем добрать белок и клетчатку из доступных в Кыргызстане продуктов;
-- money: 3–6 пунктов по казне с цифрами в сомах: доходы и расходы за неделю, процент сбережений (savings_rate_pct), топ-категории и самые крупные траты, в какой день потрачено больше всего, сравнение с прошлой неделей, долги людей и кредиты, где реально сэкономить и сколько;
+- food: 4–7 конкретных советов по питанию с цифрами. Опирайся на food_log — это все записанные блюда: назови блюда, которые дают больше всего калорий, и где не хватает белка и клетчатки. Ещё: средние калории/белок/жиры/углеводы/клетчатка против нормы, в какие дни был перебор или недобор, сколько записано приёмов пищи, чем добрать белок и клетчатку из доступных в Кыргызстане продуктов;
+- money: 4–7 пунктов по казне с цифрами в сомах. Опирайся на operations — это ВСЕ операции недели с комментариями (note): назови 3–5 крупнейших трат поштучно (день, категория, комментарий, сумма); отдельно посчитай траты на людей и переводы (категории «Пара», «Подарки», «Людям в долг», «Отдал долг» и операции, где в комментарии имя человека или слово «перевод») — сколько всего и какая это доля расходов, сравни с прошлой неделей, без осуждения, предложи заложить на это отдельный лимит в месяц; используй category_vs_prev_week, чтобы показать, что выросло и что упало. Совет «готовить дома» давай ТОЛЬКО если траты на кафе/фастфуд/столовую/доставку реально заметны, и с точной суммой из operations. Ещё: доходы и расходы за неделю, процент сбережений (savings_rate_pct), топ-категории и самые крупные траты, в какой день потрачено больше всего, сравнение с прошлой неделей, долги людей и кредиты, где реально сэкономить и сколько;
 - body: 2–4 совета про сон (длительность, пересып, пробуждения), шаги и тренировки; учитывай work (умственная нагрузка и стресс: при высоком стрессе — режим сна, перекусы без сахара, прогулки);
 - goals: ровно 3 цели на эту неделю — измеримые и достижимые (например «5 дней из 7 добрать 100 г белка»);
 - adjust: 0–3 предложения поменять дневные нормы (param: kcal — калории, protein — белок в граммах, water — вода в мл; value — НОВОЕ значение в день, оно ДОЛЖНО отличаться от текущего в targets минимум на 100 ккал / 10 г / 200 мл, иначе не предлагай; why — коротко почему). Предлагай, только если данные это подтверждают: например, вес не растёт при наборе массы — поднять kcal на 150–250; воды стабильно мало — скорректировать норму. Текущие нормы — в targets.
-Без медицинских диагнозов. Если данных мало — начни с совета чаще записывать.
+Без медицинских диагнозов. Если данных мало — начни с совета чаще записывать. Не давай общих советов, которые не следуют из этих данных.
 Данные: ${JSON.stringify(data)}`;
     const r = await aiCall([{ text: prompt }], COACH_SCHEMA);
     S.coach = [...(S.coach || []).filter((c) => c.week !== w.key), { week: w.key, at: Date.now(), v: APP_VER, ...r, adjust: cleanAdjust(r.adjust), goals: (r.goals || []).slice(0, 3).map((g) => ({ ...g, done: false })) }].slice(-12);
@@ -547,8 +568,12 @@ async function coachRun(force) {
     toast('🧠 Разбор недели готов');
   } catch (e) {
     UI.coachBusy = false; if (!UI.sheetFn) render();
-    if (force) toast('⚠️ ' + esc(aiErr(e.message)));
+    UI.coachErr = aiErr(e.message);
+    if (force) toast('⚠️ ' + esc(UI.coachErr));
+    return false;
   }
+  UI.coachErr = null;
+  return true;
 }
 const lastCoach = () => (S.coach || []).slice(-1)[0] || null;
 function coachCard() {
@@ -667,7 +692,14 @@ Object.assign(A, {
     act(() => { S.profile[key] = v; }, `📈 Новая норма: ${fmt(v)} ${a.param === 'kcal' ? 'ккал' : a.param === 'protein' ? 'г белка' : 'мл воды'}`);
     refreshSheet();
   },
-  coachNow: async () => { closeSheet(); await coachRun(true); if (lastCoach()) openCoach(); },
+  coachNow: async () => {
+    aiLoading('Тренер разбирает неделю: каждую трату и блюдо…');
+    const ok = await coachRun(true);
+    if (ok) { openCoach(); return; }
+    openSheet(() => `${sheetHead('🧠 Разбор недели')}<p class="red">⚠️ Новый разбор не получился: ${esc(UI.coachErr || 'нет данных за прошлую неделю')}</p>
+    <p class="dim">Старый разбор не изменился. Попробуй ещё раз через минуту.</p>
+    <button class="btn gold" data-a="coachNow">🔄 Попробовать снова</button>${lastCoach() ? '<button class="btn ghost" style="margin-top:8px" data-a="coachOpen">Открыть прошлый разбор</button>' : ''}`);
+  },
   coachGoal: (el) => {
     const c = S.coach[UI.coachIdx] || lastCoach(); const g = c.goals[+el.dataset.v];
     const willDone = !g.done;
